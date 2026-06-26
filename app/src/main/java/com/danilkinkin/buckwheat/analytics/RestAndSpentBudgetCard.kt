@@ -102,6 +102,10 @@ fun RestAndSpentBudgetCard(
         )
     )
 
+    val activeContainerColor = if (showSpentCard) harmonizedColor.main else harmonizedColor.container
+    val activeWaveColor = if (showSpentCard) harmonizedColor.container else harmonizedColor.main
+
+
     Box(
         modifier = modifier
             .clip(shape = MaterialTheme.shapes.extraLarge)
@@ -111,7 +115,7 @@ fun RestAndSpentBudgetCard(
             modifier = modifier,
             shape = MaterialTheme.shapes.extraLarge,
             colors = CardDefaults.cardColors(
-                containerColor = harmonizedColor.container,
+                containerColor = activeContainerColor,
                 contentColor = harmonizedColor.onContainer,
             ),
         ) {
@@ -130,7 +134,7 @@ fun RestAndSpentBudgetCard(
                     Box(
                         modifier = Modifier
                             .background(
-                                harmonizedColor.main,
+                                color = activeWaveColor,
                                 shape = WavyShape(
                                     period = if (bigVariant) 70.dp else 40.dp,
                                     amplitude = percent
