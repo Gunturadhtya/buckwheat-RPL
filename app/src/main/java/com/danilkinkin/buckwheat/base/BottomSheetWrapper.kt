@@ -3,6 +3,7 @@ package com.danilkinkin.buckwheat.base
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -147,7 +148,11 @@ fun BottomSheetWrapper(
                 confirmChange = { statusBarFillProgress > 0.5F },
             )
 
-            Box {
+            Box (
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 1.dp)
+            ) {
                 CompositionLocalProvider(
                     LocalBottomSheetScrollState provides BottomSheetScrollState(
                         topPadding = statusBarHeight * statusBarFillProgress,

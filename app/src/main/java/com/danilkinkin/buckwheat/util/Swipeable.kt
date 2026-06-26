@@ -106,10 +106,10 @@ open class SwipeableState<T>(
 
     internal var anchors by mutableStateOf(emptyMap<Float, T>())
 
-    private val latestNonEmptyAnchorsFlow: Flow<Map<Float, T>> =
-        snapshotFlow { anchors }
-            .filter { it.isNotEmpty() }
-            .take(1)
+//    private val latestNonEmptyAnchorsFlow: Flow<Map<Float, T>> =
+//        snapshotFlow { anchors }
+//            .filter { it.isNotEmpty() }
+//            .take(1)
 
     internal var minBound = Float.NEGATIVE_INFINITY
     internal var maxBound = Float.POSITIVE_INFINITY
@@ -291,7 +291,7 @@ open class SwipeableState<T>(
      */
     @ExperimentalMaterialApi
     suspend fun snapTo(targetValue: T) {
-        latestNonEmptyAnchorsFlow.collect { anchors ->
+        anchorsContaining(targetValue).collect { anchors ->
             val targetOffset = anchors.getOffset(targetValue)
             requireNotNull(targetOffset) {
                 "The target value must have an associated anchor."
@@ -309,7 +309,7 @@ open class SwipeableState<T>(
      */
     @ExperimentalMaterialApi
     suspend fun animateTo(targetValue: T, anim: AnimationSpec<Float> = animationSpec) {
-        latestNonEmptyAnchorsFlow.collect { anchors ->
+        anchorsContaining(targetValue).collect { anchors ->
             try {
                 val targetOffset = anchors.getOffset(targetValue)
                 requireNotNull(targetOffset) {
@@ -319,7 +319,6 @@ open class SwipeableState<T>(
             } finally {
                 val endOffset = absoluteOffset.value
                 val endValue = anchors
-                    // fighting rounding error once again, anchor should be as close as 0.5 pixels
                     .filterKeys { anchorOffset -> abs(anchorOffset - endOffset) < 0.5f }
                     .values.firstOrNull() ?: currentValue
                 currentValue = endValue
@@ -341,7 +340,7 @@ open class SwipeableState<T>(
      * @return the reason fling ended
      */
     suspend fun performFling(velocity: Float) {
-        latestNonEmptyAnchorsFlow.collect { anchors ->
+        anchorsContaining(currentValue).collect { anchors ->
             val lastAnchor = anchors.getOffset(currentValue)!!
             val targetValue = computeTarget(
                 offset = offset.value,
@@ -353,7 +352,6 @@ open class SwipeableState<T>(
             )
             val targetState = anchors[targetValue]
             if (targetState != null && confirmStateChange(targetState)) animateTo(targetState)
-            // If the user vetoed the state change, rollback to the previous state.
             else animateInternalToOffset(lastAnchor, animationSpec)
         }
     }
@@ -383,6 +381,11 @@ open class SwipeableState<T>(
         }
         return deltaToConsume
     }
+
+    private fun anchorsContaining(value: T): Flow<Map<Float, T>> =
+        snapshotFlow { anchors }
+            .filter { it.isNotEmpty() && it.containsValue(value) }
+            .take(1)
 
     companion object {
         /**
@@ -737,6 +740,8 @@ private fun computeTarget(
         }
     }
 }
+
+
 
 private fun <T> Map<Float, T>.getOffset(state: T): Float? {
     return entries.firstOrNull { it.value == state }?.key

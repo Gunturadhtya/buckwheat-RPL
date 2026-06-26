@@ -271,10 +271,13 @@ fun MainScreen(
                                             editorHeightAnimated
                                     ).coerceAtMost(0f)
 
-                            (topSheetState.offset.value.coerceIn(
-                                halfExpanedOffset,
+                            val clampedOffset = if (halfExpanedOffset < 0f) {
+                                topSheetState.offset.value.coerceIn(halfExpanedOffset, 0f)
+                            } else {
                                 0f
-                            ) + contentHeight - navigationBarOffset.toPx() - 16.dp.toPx()).toDp()
+                            }
+
+                            (clampedOffset + contentHeight - navigationBarOffset.toPx() - 16.dp.toPx()).toDp()
                         } else {
                             editorHeightAnimated.toDp()
                         }

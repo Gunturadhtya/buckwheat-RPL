@@ -81,14 +81,18 @@ fun Wallet(
 
     // Show snackbar on success or error from top-up
     LaunchedEffect(topUpState) {
-        topUpState.successMessage?.let {
-            showTopUpDialog = false
-            snackbarHostState.showSnackbar(it)
-            spendsViewModel.clearTopUpState()
-        }
-        topUpState.errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            spendsViewModel.clearTopUpState()
+        when {
+            topUpState.successMessage != null -> {
+                showTopUpDialog = false
+                val msg = topUpState.successMessage!!
+                spendsViewModel.clearTopUpState()
+                snackbarHostState.showSnackbar(msg)
+            }
+            topUpState.errorMessage != null -> {
+                val msg = topUpState.errorMessage!!
+                spendsViewModel.clearTopUpState()
+                snackbarHostState.showSnackbar(msg)
+            }
         }
     }
 
@@ -113,6 +117,12 @@ fun Wallet(
             ))
                     || forceChange
         )
+    }
+
+    LaunchedEffect(budget) {
+        if (!isEdit) {
+            budgetCache = budget ?: BigDecimal.ZERO
+        }
     }
 
     val offset = with(LocalDensity.current) { 50.dp.toPx().toInt() }

@@ -1,6 +1,7 @@
 package com.danilkinkin.buckwheat.base
 
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.animateFloatAsState
@@ -163,6 +164,7 @@ fun rememberModalBottomSheetState(
     render = initialValue !== ModalBottomSheetValue.Hidden
 )
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 @ExperimentalMaterialApi
 fun ModalBottomSheetLayout(
@@ -263,19 +265,14 @@ private fun Modifier.bottomSheetSwipeable(
     cancelable: Boolean = true,
 ): Modifier {
     val sheetHeight = sheetHeightState.value
-
-    val modifier = if (sheetHeight != null) {
+    val modifier = if (sheetHeight != null && fullHeight > 0f) {
         val anchors = if (sheetHeight < fullHeight / 2 || sheetState.isSkipHalfExpanded) {
             mapOf(
                 fullHeight to ModalBottomSheetValue.Hidden,
                 fullHeight - sheetHeight to ModalBottomSheetValue.Expanded
             )
         } else {
-            mapOf(
-                fullHeight to ModalBottomSheetValue.Hidden,
-                fullHeight / 2 to ModalBottomSheetValue.HalfExpanded,
-                max(0f, fullHeight - sheetHeight) to ModalBottomSheetValue.Expanded
-            )
+            mapOf(fullHeight.toFloat() to ModalBottomSheetValue.Hidden)
         }
         Modifier.swipeable(
             state = sheetState,

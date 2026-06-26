@@ -207,16 +207,21 @@ fun TopSheetLayout(
                             .roundToInt(),
                     )
                 }
-                .swipeable(
-                    enabled = !lockDraggable.value,
-                    state = swipeableState,
-                    orientation = Orientation.Vertical,
-                    anchors = mapOf(
-                        halfExpanedOffset to TopSheetValue.HalfExpanded,
-                        0f to TopSheetValue.Expanded
-                    ),
+                .then(
+                    if (halfExpanedOffset < 0f) {
+                        Modifier.swipeable(
+                            enabled = !lockDraggable.value,
+                            state = swipeableState,
+                            orientation = Orientation.Vertical,
+                            anchors = mapOf(
+                                halfExpanedOffset to TopSheetValue.HalfExpanded,
+                                0f to TopSheetValue.Expanded,
+                            ),
+                        )
+                    } else {
+                        Modifier
+                    }
                 )
-
         ) {
             Box(modifier = modifier.fillMaxSize()) {
                 if (progress != 0f) {
