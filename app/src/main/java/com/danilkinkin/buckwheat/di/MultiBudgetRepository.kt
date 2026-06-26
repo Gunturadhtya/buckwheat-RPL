@@ -33,6 +33,91 @@ class MultiBudgetRepository @Inject constructor(
         it[activeBudgetProfileIdKey]
     }
 
+    // ── Initialization ───────────────────────────────────────────────────────
+
+    /**
+     * Ensures there is always at least one [BudgetProfile] row that mirrors
+     * the budget data already stored in [budgetDataStore].
+     *
+     * **Why this is needed:** Before multi-budget support was added, budget
+     * data lived exclusively in [budgetDataStore] with no corresponding
+     * [BudgetProfile] row. When a user with an existing budget adds a *new*
+     * budget for the first time, [persistCurrentStateToActiveProfile] is
+     * called first — but it exits early because [activeBudgetProfileIdKey]
+     * is `null`. The new profile then overwrites DataStore, losing the
+     * original budget entirely.
+     *
+     * Call this once at startup (e.g. from [MultiBudgetViewModel.init]).
+     * It is a no-op when a profile already exists or when DataStore holds
+     * no meaningful budget yet (i.e. [lastChangeDailyBudgetDate] is null,
+     * meaning the user has never configured a budget period).
+     */
+    suspend fun ensureDefaultProfile() {
+        // Already has at least one profile — nothing to do.
+        if (budgetProfileDao.count() > 0) return
+
+        val prefs = context.budgetDataStore.data.first()
+
+        // If no budget period has ever been configured, there is nothing
+        // worth snapshotting into a profile — let the normal first-run flow
+        // (SetBudget screen) handle it.
+        val lastChangeDailyBudgetDate = prefs[lastChangeDailyBudgetDateStoreKey] ?: return
+
+        // Snapshot whatever is currently in DataStore into a new profile.
+        val uid = budgetProfileDao.insert(
+            BudgetProfile(
+                name = "Budget 1",
+                sortOrder = 0,
+                currency = prefs[currencyStoreKey] ?: "",
+                budget = prefs[budgetStoreKey] ?: "0.00",
+                spent = prefs[spentStoreKey] ?: "0.00",
+                dailyBudget = prefs[dailyBudgetStoreKey] ?: "0.00",
+                spentFromDailyBudget = prefs[spentFromDailyBudgetStoreKey] ?: "0.00",
+                startPeriodDate = prefs[startPeriodDateStoreKey],
+                finishPeriodDate = prefs[finishPeriodDateStoreKey],
+                finishPeriodActualDate = prefs[finishPeriodActualDateStoreKey],
+                lastChangeDailyBudgetDate = lastChangeDailyBudgetDate,
+            )
+        )
+
+        // Mark it as the active profile so future persist/switch calls work.
+        setActiveProfileId(uid.toInt())
+    }
+
+    /**
+     * Called right after [SpendsRepository.setBudget] writes the very first
+     * budget into [budgetDataStore] during onboarding.
+     *
+     * ensureDefaultProfile() only runs once at app startup, before any budget
+     * exists on a fresh install — so it no-ops and defers to the first-run
+     * flow, which never calls it again. Without this, `budget_profiles` stays
+     * empty forever. This snapshots the current DataStore state into a new
+     * profile and activates it. No-op if a profile already exists.
+     */
+    suspend fun ensureActiveProfileForCurrentBudget() {
+        if (budgetProfileDao.count() > 0) return
+
+        val prefs = context.budgetDataStore.data.first()
+
+        val uid = budgetProfileDao.insert(
+            BudgetProfile(
+                name = "Init Budget",
+                sortOrder = 0,
+                currency = prefs[currencyStoreKey] ?: "",
+                budget = prefs[budgetStoreKey] ?: "0.00",
+                spent = prefs[spentStoreKey] ?: "0.00",
+                dailyBudget = prefs[dailyBudgetStoreKey] ?: "0.00",
+                spentFromDailyBudget = prefs[spentFromDailyBudgetStoreKey] ?: "0.00",
+                startPeriodDate = prefs[startPeriodDateStoreKey],
+                finishPeriodDate = prefs[finishPeriodDateStoreKey],
+                finishPeriodActualDate = prefs[finishPeriodActualDateStoreKey],
+                lastChangeDailyBudgetDate = prefs[lastChangeDailyBudgetDateStoreKey],
+            )
+        )
+
+        setActiveProfileId(uid.toInt())
+    }
+
     // ── Mutations ────────────────────────────────────────────────────────────
 
     /**

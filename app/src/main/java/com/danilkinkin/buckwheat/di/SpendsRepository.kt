@@ -47,6 +47,7 @@ class SpendsRepository @Inject constructor(
     @ApplicationContext val context: Context,
     private val transactionDao: TransactionDao,
     private val getCurrentDateUseCase: GetCurrentDateUseCase,
+    private val multiBudgetRepository: MultiBudgetRepository
 ) {
     fun getAllTransactions(): LiveData<List<Transaction>> = transactionDao.getAll()
     fun getAllSpends(): LiveData<List<Transaction>> = transactionDao.getAll(TransactionType.SPENT)
@@ -163,6 +164,8 @@ class SpendsRepository @Inject constructor(
         setDailyBudget(whatBudgetForDay())
 
         hideOverspendingWarn(false)
+
+        multiBudgetRepository.ensureActiveProfileForCurrentBudget()
     }
 
     suspend fun changeBudget(newBudget: BigDecimal, newFinishDate: Date) {
