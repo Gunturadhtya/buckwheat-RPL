@@ -4,8 +4,10 @@ import androidx.room.*
 import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.danilkinkin.buckwheat.data.dao.BudgetProfileDao
 import com.danilkinkin.buckwheat.data.dao.StorageDao
 import com.danilkinkin.buckwheat.data.dao.TransactionDao
+import com.danilkinkin.buckwheat.data.entities.BudgetProfile
 import com.danilkinkin.buckwheat.data.entities.Storage
 import com.danilkinkin.buckwheat.data.entities.Transaction
 
@@ -47,9 +49,30 @@ val AutoMigration4to5: Migration = object : Migration(4, 5) {
     }
 }
 
+// Add budget_profiles table for multi-budget support
+val AutoMigration5to6: Migration = object : Migration(5, 6) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `budget_profiles` (" +
+                    "`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, " +
+                    "`currency` TEXT NOT NULL DEFAULT '', " +
+                    "`budget` TEXT NOT NULL DEFAULT '0.00', " +
+                    "`spent` TEXT NOT NULL DEFAULT '0.00', " +
+                    "`daily_budget` TEXT NOT NULL DEFAULT '0.00', " +
+                    "`spent_from_daily_budget` TEXT NOT NULL DEFAULT '0.00', " +
+                    "`start_period_date` INTEGER, " +
+                    "`finish_period_date` INTEGER, " +
+                    "`finish_period_actual_date` INTEGER, " +
+                    "`last_change_daily_budget_date` INTEGER, " +
+                    "`sort_order` INTEGER NOT NULL DEFAULT 0)"
+        )
+    }
+}
+
 @Database(
-    entities = [Transaction::class, Storage::class],
-    version = 5,
+    entities = [Transaction::class, Storage::class, BudgetProfile::class],
+    version = 6,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AutoMigration1to2::class),
         AutoMigration(from = 2, to = 3, spec = AutoMigration2to3::class),
@@ -64,7 +87,9 @@ abstract class DatabaseModule : RoomDatabase() {
 
     abstract fun storageDao(): StorageDao
 
+    abstract fun budgetProfileDao(): BudgetProfileDao
+
     companion object {
-        val MANUAL_MIGRATIONS = arrayOf<Migration>(AutoMigration4to5)
+        val MANUAL_MIGRATIONS = arrayOf<Migration>(AutoMigration4to5, AutoMigration5to6)
     }
 }

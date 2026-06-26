@@ -143,4 +143,10 @@
   <string name="confirm_finish_budget_title">Finish budget</string>
   <string name="confirm_finish_budget_description">Your current budget will be completed, and you will no longer be able to make any further expenses</string>
   <string name="confirm_finish_budget">Finish budget</string>
+  <string name="add_budget" translatable="false">Add budget</string>
+  <string name="budget_default_name" translatable="false">Budget %1$d</string>
+    <string name="budget_name_hint" translatable="false">Budget name</string>
+  <string name="rename_budget" translatable="false">Rename budget</string>
+  <string name="delete_budget_title" translatable="false">Delete budget</string>
+    <string name="delete_budget_confirmation" translatable="false">Delete \"%1$s\"? All spending data for this budget will be lost.</string>
 </resources>

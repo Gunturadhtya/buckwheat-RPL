@@ -26,6 +26,7 @@ import com.danilkinkin.buckwheat.base.Divider
 import com.danilkinkin.buckwheat.base.LocalBottomSheetScrollState
 import com.danilkinkin.buckwheat.data.AppViewModel
 import com.danilkinkin.buckwheat.data.ExtendCurrency
+import com.danilkinkin.buckwheat.data.MultiBudgetViewModel
 import com.danilkinkin.buckwheat.data.PathState
 import com.danilkinkin.buckwheat.data.RestedBudgetDistributionMethod
 import com.danilkinkin.buckwheat.data.SpendsViewModel
@@ -45,6 +46,7 @@ fun Wallet(
     activityResultRegistryOwner: ActivityResultRegistryOwner? = null,
     appViewModel: AppViewModel = hiltViewModel(),
     spendsViewModel: SpendsViewModel = hiltViewModel(),
+    multiBudgetViewModel: MultiBudgetViewModel = hiltViewModel(),
     onClose: () -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
@@ -61,10 +63,18 @@ fun Wallet(
     val spends by spendsViewModel.spends.observeAsState()
     val restedBudgetDistributionMethod by spendsViewModel.restedBudgetDistributionMethod.observeAsState()
 
+    val profiles by multiBudgetViewModel.profiles.observeAsState(emptyList())
+    // profiles.size is still used to compute the default name for a new budget.
+
     val restBudget =
         (budgetCache - spent - spentFromDailyBudget)
 
     val openConfirmFinishBudgetDialog = remember { mutableStateOf(false) }
+    var showNewBudgetNameDialog by remember { mutableStateOf(false) }
+    var newBudgetNameText by remember { mutableStateOf("") }
+
+    // Pre-read at composition time so it can be used inside onClick lambdas.
+    val budgetDefaultNameTemplate = stringResource(R.string.budget_default_name)
 
     if (spends === null) return
 
@@ -96,6 +106,7 @@ fun Wallet(
                 0
             }
 
+            // ── Top toolbar row ───────────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -126,20 +137,47 @@ fun Wallet(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Spacer(Modifier.weight(1F))
-                if (!isEdit) {
-                    IconButton(
-                        onClick = { isEdit = true },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_edit),
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
-                        )
+
+                // Add new budget profile button (shown in summary view only)
+                AnimatedVisibility(
+                    visible = !isEdit,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150)),
+                ) {
+                    Row {
+                        IconButton(
+                            onClick = {
+                                newBudgetNameText = budgetDefaultNameTemplate.format(
+                                    profiles.size + 1,
+                                )
+                                showNewBudgetNameDialog = true
+                            },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = stringResource(R.string.add_budget),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        if (!isEdit) {
+                            IconButton(
+                                onClick = { isEdit = true },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_edit),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                     }
-                } else {
+                }
+
+                if (isEdit) {
                     Spacer(Modifier.size(48.dp))
                 }
             }
+
             Column(
                 modifier = Modifier
                     .verticalScroll(rememberScrollState())
@@ -218,15 +256,7 @@ fun Wallet(
                         appViewModel.openSheet(PathState(CURRENCY_EDITOR))
                     },
                     endCaption = when (currency?.type) {
-                        ExtendCurrency.Type.FROM_LIST -> "${
-                            Currency.getInstance(
-                                currency!!.value
-                            ).displayName.titleCase()
-                        } (${
-                            Currency.getInstance(
-                                currency!!.value
-                            ).symbol
-                        })"
+                        ExtendCurrency.Type.FROM_LIST -> "${ Currency.getInstance(currency!!.value).displayName.titleCase() } (${ Currency.getInstance(currency!!.value).symbol })"
                         ExtendCurrency.Type.CUSTOM -> currency!!.value!!
                         else -> ""
                     },
@@ -321,9 +351,7 @@ fun Wallet(
                                 .fillMaxWidth()
                                 .heightIn(60.dp)
                                 .padding(horizontal = 16.dp),
-                            enabled = dateToValue.value !== null && countDaysToToday(dateToValue.value!!) > 0 && budgetCache > BigDecimal(
-                                0
-                            )
+                            enabled = dateToValue.value !== null && countDaysToToday(dateToValue.value!!) > 0 && budgetCache > BigDecimal(0)
                         ) {
                             Text(
                                 text = if (spends!!.isNotEmpty() && !forceChange) {
@@ -345,15 +373,54 @@ fun Wallet(
         }
     }
 
+    // ── Finish-early confirmation ─────────────────────────────────────────────
     if (openConfirmFinishBudgetDialog.value) {
         ConfirmFinishEarlyDialog(
             onConfirm = {
                 spendsViewModel.finishBudget()
-
                 onClose()
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             },
             onClose = { openConfirmFinishBudgetDialog.value = false },
+        )
+    }
+
+    // ── New-budget-profile dialog ─────────────────────────────────────────────
+    if (showNewBudgetNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewBudgetNameDialog = false },
+            title = { Text(stringResource(R.string.add_budget)) },
+            text = {
+                OutlinedTextField(
+                    value = newBudgetNameText,
+                    onValueChange = { newBudgetNameText = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.budget_name_hint)) },
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newBudgetNameText.isNotBlank()) {
+                            multiBudgetViewModel.createAndSwitchToProfile(
+                                newBudgetNameText.trim()
+                            )
+                        }
+                        showNewBudgetNameDialog = false
+                        // Go straight into edit mode so the user sets dates/amount
+                        // for the new empty profile. BudgetSummary must not be
+                        // shown for a profile that has no dates yet.
+                        isEdit = true
+                    }
+                ) {
+                    Text(stringResource(R.string.apply))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewBudgetNameDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 }

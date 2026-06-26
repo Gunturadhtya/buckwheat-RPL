@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.danilkinkin.buckwheat.R
 import com.danilkinkin.buckwheat.base.BigIconButton
 import com.danilkinkin.buckwheat.data.AppViewModel
+import com.danilkinkin.buckwheat.data.MultiBudgetViewModel
 import com.danilkinkin.buckwheat.data.PathState
 import com.danilkinkin.buckwheat.data.SpendsViewModel
 import com.danilkinkin.buckwheat.editor.EditMode
@@ -38,10 +39,19 @@ fun EditorToolbar(
     spendsViewModel: SpendsViewModel = hiltViewModel(),
     appViewModel: AppViewModel = hiltViewModel(),
     editorViewModel: EditorViewModel = hiltViewModel(),
+    multiBudgetViewModel: MultiBudgetViewModel = hiltViewModel(),
 ) {
     val coroutineScope = rememberCoroutineScope()
     val isDebug = appViewModel.isDebug.observeAsState(false)
     val mode by editorViewModel.mode.observeAsState(EditMode.ADD)
+
+    val profiles by multiBudgetViewModel.profiles.observeAsState(emptyList())
+    val activeId by multiBudgetViewModel.activeProfileId.observeAsState(null)
+    val activeIndex = profiles.indexOfFirst { it.uid == activeId }.coerceAtLeast(0)
+    val activeProfile = profiles.getOrNull(activeIndex)
+
+    // Only show the budget name inside the pill when there are multiple profiles.
+    val budgetName = if (profiles.size > 1 && mode != EditMode.EDIT) activeProfile?.name else null
 
     val spendsCountScale = remember { Animatable(1f) }
 
@@ -50,17 +60,11 @@ fun EditorToolbar(
             coroutineScope.launch {
                 spendsCountScale.animateTo(
                     1.05f,
-                    animationSpec = tween(
-                        durationMillis = 20,
-                        easing = LinearEasing
-                    )
+                    animationSpec = tween(durationMillis = 20, easing = LinearEasing)
                 )
                 spendsCountScale.animateTo(
                     1f,
-                    animationSpec = tween(
-                        durationMillis = 120,
-                        easing = LinearEasing,
-                    )
+                    animationSpec = tween(durationMillis = 120, easing = LinearEasing)
                 )
             }
         }
@@ -71,7 +75,7 @@ fun EditorToolbar(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = if (isDebug.value) 6.dp else 20.dp, end = 6.dp, top = 6.dp)
+            .padding(start = if (isDebug.value) 6.dp else 8.dp, end = 6.dp, top = 6.dp)
             .statusBarsPadding(),
     ) {
         if (isDebug.value) {
@@ -85,15 +89,15 @@ fun EditorToolbar(
         if (mode == EditMode.EDIT) {
             CancelEditSpent()
         } else {
-            RestBudgetPill()
+            // Budget name (non-null only in multi-budget mode) is rendered
+            // inside the pill, above the "for today" label.
+            RestBudgetPill(budgetName = budgetName)
         }
         Spacer(modifier = Modifier.width(4.dp))
         BigIconButton(
             icon = painterResource(R.drawable.ic_settings),
             contentDescription = null,
-            onClick = {
-                appViewModel.openSheet(PathState(SETTINGS_SHEET))
-            },
+            onClick = { appViewModel.openSheet(PathState(SETTINGS_SHEET)) },
         )
     }
 }
