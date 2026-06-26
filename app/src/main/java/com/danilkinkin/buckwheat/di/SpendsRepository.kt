@@ -279,6 +279,13 @@ class SpendsRepository @Inject constructor(
                         + "]"
             )
         }
+
+        // Immediately flush the updated finishPeriodActualDate into the active
+        // profile row. Without this, the profile DB record still has
+        // finishPeriodActualDate = null and the early-finish state is lost if
+        // the app is killed before the user switches profiles (which is the only
+        // other point that calls persistCurrentStateToActiveProfile).
+        multiBudgetRepository.persistCurrentStateToActiveProfile()
     }
 
     suspend fun updateDailyBudget(newDailyBudget: BigDecimal) {
