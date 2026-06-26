@@ -40,6 +40,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RowScope.RestBudgetPill(
+    /** Active budget profile name. Null or blank = single-budget / no label. */
+    budgetName: String? = null,
     spendsViewModel: SpendsViewModel = hiltViewModel(),
     appViewModel: AppViewModel = hiltViewModel(),
     editorViewModel: EditorViewModel = hiltViewModel(),
@@ -68,7 +70,6 @@ fun RowScope.RestBudgetPill(
 
     DisposableEffect(currency) {
         restBudgetPillViewModel.calculateValues(context, editorViewModel.currentSpent)
-
         onDispose { }
     }
 
@@ -86,9 +87,9 @@ fun RowScope.RestBudgetPill(
                 anim()
             }
         }
-
         anim()
     }
+
     val percentWithNewSpentAnimated = animateFloatAsState(
         label = "percentWithNewSpentAnimated",
         targetValue = percentWithNewSpent,
@@ -154,30 +155,37 @@ fun RowScope.RestBudgetPill(
                 ) {
                     BackgroundProgress(harmonizedColor)
                     Row(
-                        modifier = Modifier.fillMaxSize().drawWithLayer {
-                            drawContent()
-                            val leftOffset = size.width - 20.dp.toPx()
-                            drawRect(
-                                topLeft = Offset(leftOffset, 0f),
-                                size = Size(
-                                    20.dp.toPx(),
-                                    size.height,
-                                ),
-                                blendMode = BlendMode.SrcIn,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color.Black,
-                                        Color.Black.copy(alpha = 0f),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawWithLayer {
+                                drawContent()
+                                val leftOffset = size.width - 20.dp.toPx()
+                                drawRect(
+                                    topLeft = Offset(leftOffset, 0f),
+                                    size = Size(
+                                        20.dp.toPx(),
+                                        size.height,
                                     ),
-                                    startX = leftOffset,
-                                    endX = leftOffset + 14.dp.toPx()
+                                    blendMode = BlendMode.SrcIn,
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color.Black,
+                                            Color.Black.copy(alpha = 0f),
+                                        ),
+                                        startX = leftOffset,
+                                        endX = leftOffset + 14.dp.toPx()
+                                    )
                                 )
-                            )
-                        },
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Start,
                     ) {
-                        StatusLabel(harmonizedColor)
+                        // Pass budget name into StatusLabel so it renders
+                        // above the "for today" text inside the pill.
+                        StatusLabel(
+                            harmonizedColor = harmonizedColor,
+                            budgetName = budgetName,
+                        )
                         Spacer(modifier = Modifier.weight(1f))
                         ValueLabel(harmonizedColor)
                     }
@@ -192,7 +200,6 @@ fun RowScope.RestBudgetPill(
                     balloonState.show()
                 }
             }
-
             onDispose { }
         }
     }
@@ -233,9 +240,7 @@ private fun Preview() {
 @Composable
 private fun PreviewHalf() {
     BuckwheatTheme {
-        Row {
-            RestBudgetPill()
-        }
+        Row { RestBudgetPill() }
     }
 }
 
@@ -243,9 +248,7 @@ private fun PreviewHalf() {
 @Composable
 private fun PreviewFull() {
     BuckwheatTheme {
-        Row {
-            RestBudgetPill()
-        }
+        Row { RestBudgetPill() }
     }
 }
 
@@ -253,18 +256,14 @@ private fun PreviewFull() {
 @Composable
 private fun PreviewOverspending() {
     BuckwheatTheme {
-        Row {
-            RestBudgetPill()
-        }
+        Row { RestBudgetPill() }
     }
 }
 
-@Preview(name = "Might mode", uiMode = UI_MODE_NIGHT_YES)
+@Preview(name = "Night mode", uiMode = UI_MODE_NIGHT_YES)
 @Composable
 private fun PreviewNightMode() {
     BuckwheatTheme {
-        Row {
-            RestBudgetPill()
-        }
+        Row { RestBudgetPill() }
     }
 }

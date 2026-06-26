@@ -1,12 +1,17 @@
 package com.danilkinkin.buckwheat.editor.toolbar.restBudgetPill
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -40,16 +45,18 @@ import com.danilkinkin.buckwheat.util.HarmonizedColorPalette
 @Composable
 fun StatusLabel(
     harmonizedColor: HarmonizedColorPalette,
+    /** Active budget profile name. Null or blank = single-budget mode (no name shown). */
+    budgetName: String? = null,
     appViewModel: AppViewModel = hiltViewModel(),
     restBudgetPillViewModel: RestBudgetPillViewModel = hiltViewModel(),
 ) {
     val budgetState by restBudgetPillViewModel.state.observeAsState(DaileBudgetState.NORMAL)
-
     val textColor = LocalContentColor.current
+    val showBudgetName = !budgetName.isNullOrBlank()
 
     Box(contentAlignment = Alignment.CenterStart) {
         Row(
-            modifier = Modifier.height(44.dp),
+            modifier = Modifier.height(50.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val textStartOffset by animateDpAsState(
@@ -59,21 +66,52 @@ fun StatusLabel(
             )
 
             Spacer(modifier = Modifier.width(textStartOffset))
-            Text(
-                text = when (budgetState) {
-                    DaileBudgetState.NORMAL, DaileBudgetState.NOT_SET, null -> stringResource(R.string.rest_budget_for_today)
-                    DaileBudgetState.OVERDRAFT -> stringResource(R.string.new_daily_budget_short)
-                    DaileBudgetState.BUDGET_END -> stringResource(R.string.budget_end)
-                },
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = MaterialTheme.typography.titleMedium.fontSize
-                ),
-                color = textColor.copy(alpha = 0.6f),
-                overflow = TextOverflow.Ellipsis,
-                softWrap = false,
-            )
+
+            // Stack budget name + status label vertically when a name is present
+            Column(
+                horizontalAlignment = Alignment.Start,
+            ) {
+                AnimatedVisibility(
+                    visible = showBudgetName,
+                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { -it / 2 },
+                    exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { it / 2 },
+                ) {
+                    AnimatedContent(
+                        targetState = budgetName ?: "",
+                        label = "budgetNameInPill",
+                        transitionSpec = {
+                            (fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 3 })
+                                .togetherWith(fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 3 })
+                        },
+                    ) { name ->
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                Text(
+                    text = when (budgetState) {
+                        DaileBudgetState.NORMAL, DaileBudgetState.NOT_SET, null -> stringResource(R.string.rest_budget_for_today)
+                        DaileBudgetState.OVERDRAFT -> stringResource(R.string.new_daily_budget_short)
+                        DaileBudgetState.BUDGET_END -> stringResource(R.string.budget_end)
+                    },
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontSize = MaterialTheme.typography.titleMedium.fontSize
+                    ),
+                    color = textColor.copy(alpha = 0.6f),
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+            }
+
             Spacer(modifier = Modifier.width(14.dp))
         }
+
         AnimatedVisibility(
             visible = budgetState === DaileBudgetState.OVERDRAFT || budgetState === DaileBudgetState.BUDGET_END,
             enter = fadeIn(tween(durationMillis = 250)),
@@ -89,15 +127,11 @@ fun StatusLabel(
                 onClick = {
                     if (budgetState === DaileBudgetState.BUDGET_END) {
                         appViewModel.openSheet(
-                            PathState(
-                                BUDGET_IS_OVER_DESCRIPTION_SHEET
-                            )
+                            PathState(BUDGET_IS_OVER_DESCRIPTION_SHEET)
                         )
                     } else {
                         appViewModel.openSheet(
-                            PathState(
-                                NEW_DAY_BUDGET_DESCRIPTION_SHEET
-                            )
+                            PathState(NEW_DAY_BUDGET_DESCRIPTION_SHEET)
                         )
                     }
                 }

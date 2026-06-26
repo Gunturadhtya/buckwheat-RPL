@@ -5,8 +5,10 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
+import androidx.lifecycle.map
 import androidx.lifecycle.viewModelScope
 import com.danilkinkin.buckwheat.data.entities.Transaction
+import com.danilkinkin.buckwheat.data.entities.TransactionType
 import com.danilkinkin.buckwheat.di.SpendsRepository
 import com.danilkinkin.buckwheat.util.countDaysToToday
 import com.danilkinkin.buckwheat.util.isToday
@@ -18,6 +20,15 @@ import java.math.BigDecimal
 import java.util.Date
 import javax.inject.Inject
 
+/**
+ * UI State for the Top Up Budget dialog flow.
+ */
+data class TopUpUiState(
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val successMessage: String? = null,
+)
+
 enum class RestedBudgetDistributionMethod { REST, ADD_TODAY, ASK }
 
 @HiltViewModel
@@ -28,6 +39,14 @@ class SpendsViewModel @Inject constructor(
     var tags = spendsRepository.getAllTags()
     var transactions = spendsRepository.getAllTransactions()
     var spends = spendsRepository.getAllSpends()
+
+    /** Actual user spending, excluding system Budget Adjustment transactions. */
+    var actualSpends: LiveData<List<Transaction>> = spends.map { list ->
+        list.filter {
+            it.type == TransactionType.SPENT &&
+            it.comment.trim() != BudgetTransactionLabel.ADJUSTMENT
+        }
+    }
     var budget = spendsRepository.getBudget().asLiveData()
     var spent = spendsRepository.getSpent().asLiveData()
     var dailyBudget = spendsRepository.getDailyBudget().asLiveData()
@@ -46,6 +65,7 @@ class SpendsViewModel @Inject constructor(
     var requireSetBudget = MutableLiveData(false)
     var periodFinished = MutableLiveData(false)
     var lastRemovedTransaction: MutableLiveData<Transaction> = MutableLiveData()
+    var topUpState = MutableLiveData(TopUpUiState())
 
     init {
         runChangeDayAction()
@@ -70,6 +90,23 @@ class SpendsViewModel @Inject constructor(
             requireSetBudget.value = false
             periodFinished.value = false
         }
+    }
+
+    fun addMoneyToBudget(amount: BigDecimal) {
+        viewModelScope.launch {
+            topUpState.value = TopUpUiState(isLoading = true)
+            try {
+                spendsRepository.addMoneyToBudget(amount)
+                topUpState.value = TopUpUiState(successMessage = "Dana berhasil ditambahkan ke budget.")
+            } catch (e: Exception) {
+                topUpState.value = TopUpUiState(errorMessage = e.message ?: "Top up gagal.")
+            }
+        }
+    }
+
+    /** Reset top-up state after the UI has consumed the success/error message. */
+    fun clearTopUpState() {
+        topUpState.value = TopUpUiState()
     }
 
     fun finishBudget() {

@@ -10,6 +10,8 @@ import com.danilkinkin.buckwheat.data.SpendsViewModel
 import com.danilkinkin.buckwheat.analytics.RestAndSpentBudgetCard
 import com.danilkinkin.buckwheat.analytics.WholeBudgetCard
 import com.danilkinkin.buckwheat.data.ExtendCurrency
+import java.math.BigDecimal
+import java.util.Date
 
 @Composable
 fun BudgetSummary(
@@ -17,7 +19,13 @@ fun BudgetSummary(
     onEdit: () -> Unit = {},
 ) {
     val currency by spendsViewModel.currency.observeAsState(ExtendCurrency.none())
-    val wholeBudget = spendsViewModel.budget.value!!
+
+    // Guard against a brand-new / empty profile where these values may be null.
+    // When any required value is missing we fall back to edit mode via onEdit()
+    // so the user is prompted to set up the budget rather than seeing a crash.
+    val wholeBudget = spendsViewModel.budget.value ?: BigDecimal.ZERO
+    val startDate = spendsViewModel.startPeriodDate.value ?: run { onEdit(); return }
+    val finishDate = spendsViewModel.finishPeriodDate.value ?: run { onEdit(); return }
 
     Column(Modifier.padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp)) {
         RestAndSpentBudgetCard(
@@ -36,12 +44,12 @@ fun BudgetSummary(
                 bigVariant = false,
                 budget = wholeBudget,
                 currency = currency,
-                startDate = spendsViewModel.startPeriodDate.value!!,
-                finishDate = spendsViewModel.finishPeriodDate.value!!,
+                startDate = startDate,
+                finishDate = finishDate,
             )
             DaysLeftCard(
-                startDate = spendsViewModel.startPeriodDate.value!!,
-                finishDate = spendsViewModel.finishPeriodDate.value!!,
+                startDate = startDate,
+                finishDate = finishDate,
             )
         }
         EditButton(onClick = { onEdit() })
