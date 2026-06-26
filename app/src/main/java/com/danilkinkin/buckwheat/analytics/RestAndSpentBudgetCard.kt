@@ -1,8 +1,10 @@
 package com.danilkinkin.buckwheat.analytics
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FloatTweenSpec
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -102,8 +104,20 @@ fun RestAndSpentBudgetCard(
         )
     )
 
-    val activeContainerColor = if (showSpentCard) harmonizedColor.main else harmonizedColor.container
-    val activeWaveColor = if (showSpentCard) harmonizedColor.container else harmonizedColor.main
+    val targetContainerColor = if (showSpentCard) harmonizedColor.main else harmonizedColor.container
+    val targetWaveColor = if (showSpentCard) harmonizedColor.container else harmonizedColor.main
+
+    val activeContainerColor by animateColorAsState(
+        targetValue = targetContainerColor,
+        animationSpec = tween(durationMillis = 300),
+        label = "containerColorAnim"
+    )
+
+    val activeWaveColor by animateColorAsState(
+        targetValue = targetWaveColor,
+        animationSpec = tween(durationMillis = 300),
+        label = "waveColorAnim"
+    )
 
 
     Box(
