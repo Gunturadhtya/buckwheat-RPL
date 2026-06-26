@@ -25,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import java.util.Date
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -62,6 +64,46 @@ fun Analytics(
     val spends by spendsViewModel.spends.observeAsState(emptyList())
     val wholeBudget = spendsViewModel.budget.value!!
     val scrollState = rememberScrollState()
+
+    var currentPreset by remember { mutableStateOf(DateRangePreset.ACTIVE_PERIOD) }
+    var customStartDate by remember { mutableStateOf<Date?>(null) }
+    var customEndDate by remember { mutableStateOf<Date?>(null) }
+
+    val filterStart = remember(currentPreset, customStartDate) {
+        when (currentPreset) {
+            DateRangePreset.ACTIVE_PERIOD -> null
+            DateRangePreset.TODAY -> com.danilkinkin.buckwheat.util.getStartOfToday()
+            DateRangePreset.LAST_7_DAYS -> com.danilkinkin.buckwheat.util.getStartOfLast7Days()
+            DateRangePreset.THIS_MONTH -> com.danilkinkin.buckwheat.util.getStartOfThisMonth()
+            DateRangePreset.LAST_MONTH -> com.danilkinkin.buckwheat.util.getStartOfLastMonth()
+            DateRangePreset.LAST_3_MONTHS -> com.danilkinkin.buckwheat.util.getStartOfLast3Months()
+            DateRangePreset.THIS_YEAR -> com.danilkinkin.buckwheat.util.getStartOfThisYear()
+            DateRangePreset.CUSTOM -> customStartDate
+        }
+    }
+
+    val filterEnd = remember(currentPreset, customEndDate) {
+        when (currentPreset) {
+            DateRangePreset.ACTIVE_PERIOD -> null
+            DateRangePreset.TODAY -> com.danilkinkin.buckwheat.util.getEndOfToday()
+            DateRangePreset.LAST_7_DAYS -> com.danilkinkin.buckwheat.util.getEndOfToday()
+            DateRangePreset.THIS_MONTH -> com.danilkinkin.buckwheat.util.getEndOfToday()
+            DateRangePreset.LAST_MONTH -> com.danilkinkin.buckwheat.util.getEndOfLastMonth()
+            DateRangePreset.LAST_3_MONTHS -> com.danilkinkin.buckwheat.util.getEndOfToday()
+            DateRangePreset.THIS_YEAR -> com.danilkinkin.buckwheat.util.getEndOfToday()
+            DateRangePreset.CUSTOM -> customEndDate
+        }
+    }
+
+    val filteredSpends = remember(spends, filterStart, filterEnd) {
+        if (filterStart == null || filterEnd == null) spends
+        else spends.filter { it.date >= filterStart && it.date <= filterEnd }
+    }
+
+    val filteredTransactions = remember(transactions, filterStart, filterEnd) {
+        if (filterStart == null || filterEnd == null) transactions
+        else transactions.filter { it.date >= filterStart && it.date <= filterEnd }
+    }
 
     val finishPeriodActualDate by spendsViewModel.finishPeriodActualDate.observeAsState(null)
 
@@ -102,8 +144,19 @@ fun Analytics(
                             finishDate = spendsViewModel.finishPeriodDate.value!!,
                             actualFinishDate = finishPeriodActualDate,
                         )
+                        
+                        DateRangeFilter(
+                            currentPreset = currentPreset,
+                            onPresetSelected = { currentPreset = it },
+                            onCustomRangeSelected = { start, end ->
+                                customStartDate = start
+                                customEndDate = end
+                            },
+                            modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth()
+                        )
+                        
                         Spacer(modifier = Modifier.height(16.dp))
-                        if (spends.isNotEmpty()) {
+                        if (filteredSpends.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -131,7 +184,7 @@ fun Analytics(
                                         .weight(1f)
                                         .fillMaxHeight(),
                                     isMin = true,
-                                    spends = spends,
+                                    spends = filteredSpends,
                                     currency = spendsViewModel.currency.value!!,
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
@@ -140,21 +193,21 @@ fun Analytics(
                                         .weight(1f)
                                         .fillMaxHeight(),
                                     isMin = false,
-                                    spends = spends,
+                                    spends = filteredSpends,
                                     currency = spendsViewModel.currency.value!!,
                                 )
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             SpendsCountCard(
                                 modifier = Modifier.fillMaxWidth(),
-                                count = spends.size,
+                                count = filteredSpends.size,
                             )
                             if (!afterMigrationToTransactions.value) {
                                 Spacer(modifier = Modifier.height(36.dp))
                                 SpendsCalendar(
                                     modifier = Modifier.zIndex(-1f),
                                     budget = wholeBudget,
-                                    transactions = transactions,
+                                    transactions = filteredTransactions,
                                     startDate = spendsViewModel.startPeriodDate.value!!,
                                     finishDate = spendsViewModel.finishPeriodDate.value!!,
                                     actualFinishDate = finishPeriodActualDate,
@@ -164,15 +217,21 @@ fun Analytics(
                             Spacer(modifier = Modifier.height(36.dp))
                             CategoriesChartCard(
                                 modifier = Modifier.fillMaxWidth(),
-                                spends = spends,
+                                spends = filteredSpends,
                                 currency = spendsViewModel.currency.value!!,
                             )
                             Spacer(modifier = Modifier.height(16.dp))
+                        } else {
+                            Text(
+                                text = "Belum ada transaksi pada rentang tanggal ini.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(vertical = 32.dp).align(Alignment.CenterHorizontally)
+                            )
                         }
                     }
                 }
 
-                if (spends.isNotEmpty()) {
+                if (filteredSpends.isNotEmpty()) {
                     val exportCSVLaunch = rememberExportCSV(
                         activityResultRegistryOwner = activityResultRegistryOwner
                     )

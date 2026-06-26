@@ -203,3 +203,55 @@ fun roundToDay(date: Date): Date {
         .build()
         .time
 }
+
+fun getStartOfToday(): Date = roundToDay(Date())
+
+fun getEndOfToday(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfToday()
+    calendar.add(Calendar.DAY_OF_MONTH, 1)
+    calendar.add(Calendar.MILLISECOND, -1)
+    return calendar.time
+}
+
+fun getStartOfLast7Days(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfToday()
+    calendar.add(Calendar.DAY_OF_MONTH, -6)
+    return calendar.time
+}
+
+fun getStartOfThisMonth(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfToday()
+    calendar.set(Calendar.DAY_OF_MONTH, 1)
+    return calendar.time
+}
+
+fun getStartOfLastMonth(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfThisMonth()
+    calendar.add(Calendar.MONTH, -1)
+    return calendar.time
+}
+
+fun getEndOfLastMonth(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfThisMonth()
+    calendar.add(Calendar.MILLISECOND, -1)
+    return calendar.time
+}
+
+fun getStartOfLast3Months(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfThisMonth()
+    calendar.add(Calendar.MONTH, -2)
+    return calendar.time
+}
+
+fun getStartOfThisYear(): Date {
+    val calendar = Calendar.getInstance()
+    calendar.time = getStartOfToday()
+    calendar.set(Calendar.DAY_OF_YEAR, 1)
+    return calendar.time
+}
