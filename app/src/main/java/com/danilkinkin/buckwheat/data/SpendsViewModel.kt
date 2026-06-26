@@ -9,6 +9,7 @@ import androidx.lifecycle.map
 import androidx.lifecycle.viewModelScope
 import com.danilkinkin.buckwheat.data.entities.Transaction
 import com.danilkinkin.buckwheat.data.entities.TransactionType
+import com.danilkinkin.buckwheat.di.MultiBudgetRepository
 import com.danilkinkin.buckwheat.di.SpendsRepository
 import com.danilkinkin.buckwheat.util.countDaysToToday
 import com.danilkinkin.buckwheat.util.isToday
@@ -35,6 +36,7 @@ enum class RestedBudgetDistributionMethod { REST, ADD_TODAY, ASK }
 class SpendsViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val spendsRepository: SpendsRepository,
+    private val multiBudgetRepository: MultiBudgetRepository,
 ) : ViewModel() {
     var tags = spendsRepository.getAllTags()
     var transactions = spendsRepository.getAllTransactions()
@@ -44,7 +46,7 @@ class SpendsViewModel @Inject constructor(
     var actualSpends: LiveData<List<Transaction>> = spends.map { list ->
         list.filter {
             it.type == TransactionType.SPENT &&
-            it.comment.trim() != BudgetTransactionLabel.ADJUSTMENT
+                    it.comment.trim() != BudgetTransactionLabel.ADJUSTMENT
         }
     }
     var budget = spendsRepository.getBudget().asLiveData()
@@ -207,6 +209,11 @@ class SpendsViewModel @Inject constructor(
                 finishPeriodActualDate.time <= Date().time
             }
 
+            // Whether a redistribution was actually applied for the active profile.
+            // If true, we sync DataStore back to the profile row so DB and
+            // DataStore stay in agreement for the currently active profile.
+            var redistributionApplied = false
+
             when {
                 lastChangeDailyBudgetDate !== null
                         && !isToday(lastChangeDailyBudgetDate)
@@ -215,26 +222,31 @@ class SpendsViewModel @Inject constructor(
                         when (restedBudgetDistributionMethod) {
                             RestedBudgetDistributionMethod.ASK -> {
                                 requireDistributionRestedBudget.value = true
+                                // No redistribution committed yet — the user will
+                                // choose via the dialog, which calls setDailyBudget
+                                // directly. We do not set redistributionApplied here.
                             }
 
                             RestedBudgetDistributionMethod.REST -> {
                                 val whatBudgetForDay =
                                     spendsRepository.whatBudgetForDay(applyTodaySpends = true)
                                 setDailyBudget(whatBudgetForDay)
+                                redistributionApplied = true
                             }
 
                             RestedBudgetDistributionMethod.ADD_TODAY -> {
                                 val notSpent = spendsRepository.howMuchNotSpent(
                                     excludeSkippedPart = true,
                                 )
-
                                 setDailyBudget(notSpent)
+                                redistributionApplied = true
                             }
                         }
                     } else {
                         val whatBudgetForDay =
                             spendsRepository.whatBudgetForDay(applyTodaySpends = true)
                         setDailyBudget(whatBudgetForDay)
+                        redistributionApplied = true
                     }
                 }
 
@@ -245,6 +257,13 @@ class SpendsViewModel @Inject constructor(
                 finishTimeReached -> {
                     periodFinished.value = true
                 }
+            }
+
+            // Sync the updated DataStore state back into the active profile row
+            // so that if the user switches away (or the app is killed) the profile
+            // DB record reflects the redistribution that just happened.
+            if (redistributionApplied) {
+                multiBudgetRepository.persistCurrentStateToActiveProfile()
             }
 
             // Bug fix https://github.com/danilkinkin/buckwheat/issues/28

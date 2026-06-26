@@ -1,18 +1,24 @@
 package com.danilkinkin.buckwheat.di
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.danilkinkin.buckwheat.budgetDataStore
 import com.danilkinkin.buckwheat.data.ExtendCurrency
+import com.danilkinkin.buckwheat.data.RestedBudgetDistributionMethod
 import com.danilkinkin.buckwheat.data.dao.BudgetProfileDao
 import com.danilkinkin.buckwheat.data.entities.BudgetProfile
 import com.danilkinkin.buckwheat.util.DAY
+import com.danilkinkin.buckwheat.util.countDays
+import com.danilkinkin.buckwheat.util.isToday
 import com.danilkinkin.buckwheat.util.roundToDay
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.lang.Long.min
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.Date
 import javax.inject.Inject
 
@@ -165,23 +171,45 @@ class MultiBudgetRepository @Inject constructor(
      * Switches the active budget profile and mirrors its persisted values back
      * into the shared [budgetDataStore] so that the rest of the app (which reads
      * from [budgetStoreKey], [spentStoreKey], etc.) works without modification.
+     *
+     * Before loading the profile into DataStore, [applyDayChangeIfNeeded] is
+     * called so that each profile's own leftover redistribution is applied
+     * against its own dates — not against whichever dates happen to be in
+     * DataStore at the time of the switch.
      */
     suspend fun switchToProfile(uid: Int) {
         val profile = budgetProfileDao.getById(uid) ?: return
 
-        context.budgetDataStore.edit { prefs ->
-            prefs[budgetStoreKey] = profile.budget
-            prefs[spentStoreKey] = profile.spent
-            prefs[dailyBudgetStoreKey] = profile.dailyBudget
-            prefs[spentFromDailyBudgetStoreKey] = profile.spentFromDailyBudget
-            prefs[currencyStoreKey] = profile.currency
+        // Read the redistribution preference from DataStore (it is global, not
+        // per-profile, so reading it here is correct).
+        val distributionMethod = context.budgetDataStore.data.first()
+            .let { prefs ->
+                prefs[restedBudgetDistributionMethodStoreKey]?.let {
+                    RestedBudgetDistributionMethod.valueOf(it)
+                } ?: RestedBudgetDistributionMethod.ASK
+            }
 
-            profile.startPeriodDate?.let { prefs[startPeriodDateStoreKey] = it }
-            profile.finishPeriodDate?.let { prefs[finishPeriodDateStoreKey] = it }
+        // Apply any pending day-change redistribution for this specific profile
+        // using its own stored dates and amounts, then persist the result to DB
+        // so the profile row is up-to-date before we load it into DataStore.
+        val updatedProfile = applyDayChangeIfNeeded(profile, distributionMethod)
+        if (updatedProfile !== profile) {
+            budgetProfileDao.update(updatedProfile)
+        }
+
+        context.budgetDataStore.edit { prefs ->
+            prefs[budgetStoreKey] = updatedProfile.budget
+            prefs[spentStoreKey] = updatedProfile.spent
+            prefs[dailyBudgetStoreKey] = updatedProfile.dailyBudget
+            prefs[spentFromDailyBudgetStoreKey] = updatedProfile.spentFromDailyBudget
+            prefs[currencyStoreKey] = updatedProfile.currency
+
+            updatedProfile.startPeriodDate?.let { prefs[startPeriodDateStoreKey] = it }
+            updatedProfile.finishPeriodDate?.let { prefs[finishPeriodDateStoreKey] = it }
                 ?: prefs.remove(finishPeriodDateStoreKey)
-            profile.finishPeriodActualDate?.let { prefs[finishPeriodActualDateStoreKey] = it }
+            updatedProfile.finishPeriodActualDate?.let { prefs[finishPeriodActualDateStoreKey] = it }
                 ?: prefs.remove(finishPeriodActualDateStoreKey)
-            profile.lastChangeDailyBudgetDate?.let { prefs[lastChangeDailyBudgetDateStoreKey] = it }
+            updatedProfile.lastChangeDailyBudgetDate?.let { prefs[lastChangeDailyBudgetDateStoreKey] = it }
                 ?: prefs.remove(lastChangeDailyBudgetDateStoreKey)
         }
 
@@ -241,6 +269,124 @@ class MultiBudgetRepository @Inject constructor(
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Applies the day-change redistribution logic directly against a
+     * [BudgetProfile]'s own stored values, without touching DataStore.
+     *
+     * This mirrors the redistribution logic in [SpendsViewModel.runChangeDayAction]
+     * but operates on a standalone [BudgetProfile] rather than on whatever
+     * happens to be loaded in DataStore at the moment. This is the correct
+     * approach for inactive profiles: each profile tracks its own
+     * [BudgetProfile.lastChangeDailyBudgetDate] and must be redistributed
+     * against its own period dates, not against the dates of whichever profile
+     * was last active.
+     *
+     * Returns an updated copy of [profile] if redistribution was applied, or
+     * the original [profile] unchanged if no redistribution was needed (e.g.
+     * the profile was already up-to-date today, the period has ended, or no
+     * budget period is configured).
+     *
+     * The [distributionMethod] is a user-level preference (global, not per-profile).
+     * When it is [RestedBudgetDistributionMethod.ASK], we fall back to
+     * [RestedBudgetDistributionMethod.REST] here — the "ask" dialog only makes
+     * sense for the currently active profile, where the UI can show a prompt.
+     * For an inactive profile that catches up silently on switch, redistributing
+     * the remainder evenly (REST) is the safest assumption; the user will see
+     * the result when the profile becomes active.
+     */
+    private fun applyDayChangeIfNeeded(
+        profile: BudgetProfile,
+        distributionMethod: RestedBudgetDistributionMethod,
+    ): BudgetProfile {
+        val lastChangeDailyBudgetDate = profile.lastChangeDailyBudgetDate
+            ?.let { Date(it) } ?: return profile   // no budget period configured
+
+        // Already redistributed today — nothing to do.
+        if (isToday(lastChangeDailyBudgetDate)) return profile
+
+        val finishPeriodDate = profile.finishPeriodDate
+            ?.let { Date(it) } ?: return profile   // no finish date — skip
+
+        val finishPeriodActualDate = profile.finishPeriodActualDate?.let { Date(it) }
+
+        val now = getCurrentDateUseCase()
+
+        val finishDayNotReached = if (finishPeriodActualDate == null) {
+            countDays(finishPeriodDate, now) > 0
+        } else {
+            countDays(finishPeriodActualDate, now) > 0
+        }
+
+        // Period is already over — no redistribution needed.
+        if (!finishDayNotReached) return profile
+
+        val budget = profile.budget.toBigDecimalOrNull() ?: return profile
+        val spent = profile.spent.toBigDecimalOrNull() ?: return profile
+        val dailyBudget = profile.dailyBudget.toBigDecimalOrNull() ?: return profile
+        val spentFromDailyBudget = profile.spentFromDailyBudget.toBigDecimalOrNull() ?: return profile
+
+        val restDays = countDays(finishPeriodDate, now).coerceAtLeast(1)
+        val restBudget = budget - spent - spentFromDailyBudget
+
+        // Compute the new daily budget using the same formula as
+        // SpendsRepository.whatBudgetForDay(applyTodaySpends = true).
+        val newDailyBudget = restBudget
+            .divide(restDays.toBigDecimal(), 2, RoundingMode.HALF_EVEN)
+
+        val hasLeftover = dailyBudget - spentFromDailyBudget > BigDecimal.ZERO
+
+        // When the user prefers ADD_TODAY (carry leftover forward as a bonus),
+        // mirror SpendsRepository.howMuchNotSpent(excludeSkippedPart = true).
+        // For ASK, fall back to REST — silent catch-up cannot show a dialog.
+        val resolvedDistribution = if (distributionMethod == RestedBudgetDistributionMethod.ASK) {
+            RestedBudgetDistributionMethod.REST
+        } else {
+            distributionMethod
+        }
+
+        val chosenDailyBudget = if (hasLeftover && resolvedDistribution == RestedBudgetDistributionMethod.ADD_TODAY) {
+            val skippedDays = countDays(
+                Date(min(now.time, finishPeriodDate.time)),
+                lastChangeDailyBudgetDate
+            ) - 1
+
+            // howMuchNotSpent(excludeSkippedPart = true) — accumulated leftover
+            val accumulatedLeftover = if (restDays == 0) {
+                restBudget
+            } else {
+                restBudget
+                    .minus(dailyBudget * skippedDays.toBigDecimal())
+                    .divide((restDays).coerceAtLeast(1).toBigDecimal(), 2, RoundingMode.HALF_EVEN)
+                    .multiply(skippedDays.coerceAtLeast(0).toBigDecimal())
+                    .plus(dailyBudget - spentFromDailyBudget)
+            }
+            accumulatedLeftover
+        } else {
+            newDailyBudget
+        }
+
+        Log.d(
+            "MultiBudgetRepository",
+            "applyDayChangeIfNeeded [profile=${profile.uid} \"${profile.name}\" " +
+                    "lastChangeDailyBudgetDate=$lastChangeDailyBudgetDate " +
+                    "restDays=$restDays " +
+                    "restBudget=$restBudget " +
+                    "dailyBudget=$dailyBudget " +
+                    "chosenDailyBudget=$chosenDailyBudget " +
+                    "distributionMethod=$resolvedDistribution]"
+        )
+
+        // Commit the previous day's spend into `spent`, reset `spentFromDailyBudget`,
+        // set the new daily budget, and advance `lastChangeDailyBudgetDate` to today.
+        // This mirrors what SpendsRepository.setDailyBudget() does in DataStore.
+        return profile.copy(
+            spent = (spent + spentFromDailyBudget).toString(),
+            spentFromDailyBudget = BigDecimal.ZERO.toString(),
+            dailyBudget = chosenDailyBudget.toString(),
+            lastChangeDailyBudgetDate = roundToDay(now).time,
+        )
+    }
 
     private suspend fun setActiveProfileId(uid: Int?) {
         context.budgetDataStore.edit { prefs ->
