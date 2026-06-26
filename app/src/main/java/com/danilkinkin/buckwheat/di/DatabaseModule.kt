@@ -70,9 +70,20 @@ val AutoMigration5to6: Migration = object : Migration(5, 6) {
     }
 }
 
+// Add budget_profile_id to transactions for per-profile isolation.
+// Existing rows receive the sentinel value 0; SpendsRepository.reassignLegacyTransactions()
+// upgrades them to the real active profile ID on first launch.
+val AutoMigration6to7: Migration = object : Migration(6, 7) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "ALTER TABLE `transactions` ADD COLUMN `budget_profile_id` INTEGER NOT NULL DEFAULT 0"
+        )
+    }
+}
+
 @Database(
     entities = [Transaction::class, Storage::class, BudgetProfile::class],
-    version = 6,
+    version = 7,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AutoMigration1to2::class),
         AutoMigration(from = 2, to = 3, spec = AutoMigration2to3::class),
@@ -90,6 +101,10 @@ abstract class DatabaseModule : RoomDatabase() {
     abstract fun budgetProfileDao(): BudgetProfileDao
 
     companion object {
-        val MANUAL_MIGRATIONS = arrayOf<Migration>(AutoMigration4to5, AutoMigration5to6)
+        val MANUAL_MIGRATIONS = arrayOf<Migration>(
+            AutoMigration4to5,
+            AutoMigration5to6,
+            AutoMigration6to7,
+        )
     }
 }

@@ -37,4 +37,14 @@ object AppModule {
     @Singleton
     @Provides
     fun provideBudgetProfileDao(db: DatabaseModule) = db.budgetProfileDao()
+
+    /**
+     * Provides the single [BudgetMutex] instance shared by [SpendsRepository]
+     * and [MultiBudgetRepository].  Both classes receive the same object via
+     * constructor injection, so their `mutex.withLock { }` calls genuinely
+     * serialise against each other.
+     */
+    @Singleton
+    @Provides
+    fun provideBudgetMutex(): BudgetMutex = BudgetMutex()
 }

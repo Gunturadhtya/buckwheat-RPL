@@ -1,0 +1,173 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "1f7ad3163da14484e8ff1a27f4936e38",
+    "entities": [
+      {
+        "tableName": "transactions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`type` TEXT NOT NULL, `value` TEXT NOT NULL, `date` INTEGER NOT NULL, `comment` TEXT NOT NULL DEFAULT '', `budget_profile_id` INTEGER NOT NULL DEFAULT 0, `uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "comment",
+            "columnName": "comment",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "budgetProfileId",
+            "columnName": "budget_profile_id",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "uid",
+            "columnName": "uid",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "uid"
+          ]
+        }
+      },
+      {
+        "tableName": "Storage",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        }
+      },
+      {
+        "tableName": "budget_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `currency` TEXT NOT NULL DEFAULT '', `budget` TEXT NOT NULL DEFAULT '0.00', `spent` TEXT NOT NULL DEFAULT '0.00', `daily_budget` TEXT NOT NULL DEFAULT '0.00', `spent_from_daily_budget` TEXT NOT NULL DEFAULT '0.00', `start_period_date` INTEGER, `finish_period_date` INTEGER, `finish_period_actual_date` INTEGER, `last_change_daily_budget_date` INTEGER, `sort_order` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "uid",
+            "columnName": "uid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "budget",
+            "columnName": "budget",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'0.00'"
+          },
+          {
+            "fieldPath": "spent",
+            "columnName": "spent",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'0.00'"
+          },
+          {
+            "fieldPath": "dailyBudget",
+            "columnName": "daily_budget",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'0.00'"
+          },
+          {
+            "fieldPath": "spentFromDailyBudget",
+            "columnName": "spent_from_daily_budget",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'0.00'"
+          },
+          {
+            "fieldPath": "startPeriodDate",
+            "columnName": "start_period_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "finishPeriodDate",
+            "columnName": "finish_period_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "finishPeriodActualDate",
+            "columnName": "finish_period_actual_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastChangeDailyBudgetDate",
+            "columnName": "last_change_daily_budget_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sort_order",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "uid"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1f7ad3163da14484e8ff1a27f4936e38')"
+    ]
+  }
+}

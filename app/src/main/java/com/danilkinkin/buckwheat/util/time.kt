@@ -16,6 +16,7 @@ import java.time.temporal.WeekFields
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.ceil
 
 const val DAY = 24 * 60 * 60 * 1000
@@ -195,13 +196,26 @@ fun prettyWeekDay(dayOfWeek: DayOfWeek): String {
 fun roundToDay(date: Date): Date {
     val calendar = Calendar.getInstance()
     calendar.time = date
-
     return Calendar
         .Builder()
         .setTimeZone(calendar.timeZone)
-        .setDate(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+        .setDate(
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
         .build()
         .time
+}
+
+fun endOfDay(date: Date, tz: TimeZone = TimeZone.getDefault()): Date {
+    val cal = Calendar.getInstance(tz)
+    cal.time = date
+    cal.set(Calendar.HOUR_OF_DAY, 23)
+    cal.set(Calendar.MINUTE, 59)
+    cal.set(Calendar.SECOND, 59)
+    cal.set(Calendar.MILLISECOND, 999)
+    return cal.time
 }
 
 fun getStartOfToday(): Date = roundToDay(Date())

@@ -8,22 +8,27 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.asFlow
+import androidx.lifecycle.asLiveData
 import androidx.lifecycle.map
+import androidx.lifecycle.switchMap
 import com.danilkinkin.buckwheat.budgetDataStore
 import com.danilkinkin.buckwheat.data.RestedBudgetDistributionMethod
 import com.danilkinkin.buckwheat.data.BudgetTransactionLabel
 import com.danilkinkin.buckwheat.data.entities.Transaction
 import com.danilkinkin.buckwheat.util.DAY
 import com.danilkinkin.buckwheat.data.ExtendCurrency
+import com.danilkinkin.buckwheat.data.dao.BudgetProfileDao
 import com.danilkinkin.buckwheat.data.dao.TransactionDao
 import com.danilkinkin.buckwheat.data.entities.TransactionType
 import com.danilkinkin.buckwheat.errorForReport
 import com.danilkinkin.buckwheat.util.countDays
+import com.danilkinkin.buckwheat.util.endOfDay
 import com.danilkinkin.buckwheat.util.isSameDay
 import com.danilkinkin.buckwheat.util.roundToDay
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.withLock
 import java.lang.Long.min
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -47,12 +52,30 @@ class SpendsRepository @Inject constructor(
     @ApplicationContext val context: Context,
     private val transactionDao: TransactionDao,
     private val getCurrentDateUseCase: GetCurrentDateUseCase,
-    private val multiBudgetRepository: MultiBudgetRepository
+    private val multiBudgetRepository: MultiBudgetRepository,
+    private val budgetMutex: BudgetMutex,
+    private val budgetProfileDao: BudgetProfileDao
 ) {
-    fun getAllTransactions(): LiveData<List<Transaction>> = transactionDao.getAll()
-    fun getAllSpends(): LiveData<List<Transaction>> = transactionDao.getAll(TransactionType.SPENT)
+    // ── Profile ID helper ────────────────────────────────────────────────────
 
-    fun getAllTags(): LiveData<List<String>> = transactionDao.getAll().map { transactions ->
+    private suspend fun activeProfileId(): Int =
+        multiBudgetRepository.getActiveProfileId().first() ?: 0
+
+    // ── Observables (profile-scoped) ─────────────────────────────────────────
+
+    fun getAllTransactions(): LiveData<List<Transaction>> {
+        return multiBudgetRepository.getActiveProfileId().asLiveData().switchMap { profileId ->
+            transactionDao.getAll(profileId ?: 0)
+        }
+    }
+
+    fun getAllSpends(): LiveData<List<Transaction>> {
+        return multiBudgetRepository.getActiveProfileId().asLiveData().switchMap { profileId ->
+            transactionDao.getAll(TransactionType.SPENT, profileId ?: 0)
+        }
+    }
+
+    fun getAllTags(): LiveData<List<String>> = getAllTransactions().map { transactions ->
         transactions
             .asSequence()
             .filter { transaction -> transaction.comment.isNotEmpty() }
@@ -112,52 +135,65 @@ class SpendsRepository @Inject constructor(
         it[hideOverspendingWarnStoreKey] ?: false
     }
 
+    // ── Mutations ─────────────────────────────────────────────────────────────
 
     suspend fun changeDisplayCurrency(currency: ExtendCurrency) {
-        context.budgetDataStore.edit {
-            it[currencyStoreKey] = currency.value ?: ""
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                it[currencyStoreKey] = currency.value ?: ""
+            }
         }
     }
 
     suspend fun changeRestedBudgetDistributionMethod(method: RestedBudgetDistributionMethod) {
-        context.budgetDataStore.edit {
-            it[restedBudgetDistributionMethodStoreKey] = method.toString()
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                it[restedBudgetDistributionMethodStoreKey] = method.toString()
+            }
         }
     }
 
     suspend fun hideOverspendingWarn(hide: Boolean) {
-        context.budgetDataStore.edit {
-            it[hideOverspendingWarnStoreKey] = hide
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                it[hideOverspendingWarnStoreKey] = hide
+            }
         }
     }
 
     suspend fun setBudget(newBudget: BigDecimal, newFinishDate: Date) {
-        context.budgetDataStore.edit {
-            it[budgetStoreKey] = newBudget.toString()
-            it[spentStoreKey] = BigDecimal.ZERO.toString()
-            it[dailyBudgetStoreKey] = BigDecimal.ZERO.toString()
-            it[spentFromDailyBudgetStoreKey] = BigDecimal.ZERO.toString()
-            it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
-            it[startPeriodDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
-            it[finishPeriodDateStoreKey] = Date(roundToDay(newFinishDate).time + DAY - 1000).time
-            it.remove(finishPeriodActualDateStoreKey)
+        val profileId = activeProfileId()
 
-            Log.d(
-                "SpendsRepository",
-                "Set budget ["
-                        + "budget: ${it[budgetStoreKey]} "
-                        + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
-                        + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
-                        + "]"
-            )
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                it[budgetStoreKey] = newBudget.toString()
+                it[spentStoreKey] = BigDecimal.ZERO.toString()
+                it[dailyBudgetStoreKey] = BigDecimal.ZERO.toString()
+                it[spentFromDailyBudgetStoreKey] = BigDecimal.ZERO.toString()
+                it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
+                it[startPeriodDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
+                it[finishPeriodDateStoreKey] = endOfDay(newFinishDate).time
+                it.remove(finishPeriodActualDateStoreKey)
+
+                Log.d(
+                    "SpendsRepository",
+                    "Set budget ["
+                            + "budget: ${it[budgetStoreKey]} "
+                            + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
+                            + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
+                            + "]"
+                )
+            }
         }
 
-        transactionDao.deleteAll()
+        // Delete only this profile's transactions, not every profile's.
+        transactionDao.deleteByProfile(profileId)
         transactionDao.insert(
             Transaction(
-                TransactionType.INCOME,
-                newBudget,
-                getCurrentDateUseCase(),
+                type = TransactionType.INCOME,
+                value = newBudget,
+                date = getCurrentDateUseCase(),
+                budgetProfileId = profileId,
             )
         )
 
@@ -165,59 +201,56 @@ class SpendsRepository @Inject constructor(
 
         hideOverspendingWarn(false)
 
-        multiBudgetRepository.ensureActiveProfileForCurrentBudget()
+        multiBudgetRepository.ensureProfileExists()
     }
 
     suspend fun changeBudget(newBudget: BigDecimal, newFinishDate: Date) {
         try {
-            // 1. Ambil currentBudget dari DataStore
+            val profileId = activeProfileId()
             val currentBudget = getBudget().first()
 
-            // 2. Update finishPeriodDateStoreKey (dan budgetStoreKey)
-            context.budgetDataStore.edit {
-                it[budgetStoreKey] = newBudget.toString()
-                it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
-                it[finishPeriodDateStoreKey] = Date(roundToDay(newFinishDate).time + DAY - 1000).time
-                it.remove(finishPeriodActualDateStoreKey)
+            budgetMutex.mutex.withLock {
+                context.budgetDataStore.edit {
+                    it[budgetStoreKey] = newBudget.toString()
+                    it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
+                    it[finishPeriodDateStoreKey] = endOfDay(newFinishDate).time
+                    it.remove(finishPeriodActualDateStoreKey)
 
-                Log.d(
-                    "SpendsRepository",
-                    "Change budget ["
-                            + "budget: ${it[budgetStoreKey]} "
-                            + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
-                            + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
-                            + "]"
-                )
+                    Log.d(
+                        "SpendsRepository",
+                        "Change budget ["
+                                + "budget: ${it[budgetStoreKey]} "
+                                + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
+                                + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
+                                + "]"
+                    )
+                }
             }
 
-            // 3. Hitung adjustment = newBudget - currentBudget
             val adjustment = newBudget - currentBudget
 
-            // 4/5. Insert adjustment transaction jika adjustment != 0
             if (adjustment > BigDecimal.ZERO) {
-                // Adjustment positif -> INCOME
                 transactionDao.insert(
                     Transaction(
-                        TransactionType.INCOME,
-                        adjustment,
-                        getCurrentDateUseCase(),
+                        type = TransactionType.INCOME,
+                        value = adjustment,
+                        date = getCurrentDateUseCase(),
                         comment = BudgetTransactionLabel.ADJUSTMENT,
+                        budgetProfileId = profileId,
                     )
                 )
             } else if (adjustment < BigDecimal.ZERO) {
-                // Adjustment negatif -> SPENT (tidak memanggil addSpent agar spentStoreKey aman)
                 transactionDao.insert(
                     Transaction(
-                        TransactionType.SPENT,
-                        adjustment.abs(),
-                        getCurrentDateUseCase(),
+                        type = TransactionType.SPENT,
+                        value = adjustment.abs(),
+                        date = getCurrentDateUseCase(),
                         comment = BudgetTransactionLabel.ADJUSTMENT,
+                        budgetProfileId = profileId,
                     )
                 )
             }
-            // Jika adjustment == 0, tidak membuat transaksi adjustment
 
-            // 7. Hitung ulang daily budget
             updateDailyBudget(whatBudgetForDay())
         } catch (e: Exception) {
             Log.e("SpendsRepository", "changeBudget failed", e)
@@ -227,36 +260,35 @@ class SpendsRepository @Inject constructor(
 
     suspend fun addMoneyToBudget(amount: BigDecimal) {
         try {
-            // 1. Validasi amount > 0
             require(amount > BigDecimal.ZERO) { "Top up amount must be greater than zero" }
 
-            // 2. Ambil currentBudget dari DataStore
+            val profileId = activeProfileId()
             val currentBudget = getBudget().first()
 
-            // 3. Insert histori transaksi INCOME dengan comment TOP_UP
             transactionDao.insert(
                 Transaction(
-                    TransactionType.INCOME,
-                    amount,
-                    getCurrentDateUseCase(),
+                    type = TransactionType.INCOME,
+                    value = amount,
+                    date = getCurrentDateUseCase(),
                     comment = BudgetTransactionLabel.TOP_UP,
+                    budgetProfileId = profileId,
                 )
             )
 
-            // 4. Update budgetStoreKey = currentBudget + amount
-            context.budgetDataStore.edit {
-                it[budgetStoreKey] = (currentBudget + amount).toString()
+            budgetMutex.mutex.withLock {
+                context.budgetDataStore.edit {
+                    it[budgetStoreKey] = (currentBudget + amount).toString()
 
-                Log.d(
-                    "SpendsRepository",
-                    "Add money to budget ["
-                            + "amount: $amount "
-                            + "new budget: ${it[budgetStoreKey]} "
-                            + "]"
-                )
+                    Log.d(
+                        "SpendsRepository",
+                        "Add money to budget ["
+                                + "amount: $amount "
+                                + "new budget: ${it[budgetStoreKey]} "
+                                + "]"
+                    )
+                }
             }
 
-            // 5. Hitung ulang daily budget
             updateDailyBudget(whatBudgetForDay())
         } catch (e: Exception) {
             Log.e("SpendsRepository", "addMoneyToBudget failed", e)
@@ -266,72 +298,80 @@ class SpendsRepository @Inject constructor(
     }
 
     suspend fun finishBudget(finishDate: Date) {
-        context.budgetDataStore.edit {
-            it[finishPeriodActualDateStoreKey] = finishDate.time
+        val activeId = multiBudgetRepository.getActiveProfileId().first() ?: return
 
-            Log.d(
-                "SpendsRepository",
-                "Finish budget ["
-                        + "budget: ${it[budgetStoreKey]} "
-                        + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
-                        + "actual finish date: ${Date(it[finishPeriodActualDateStoreKey]!!)}"
-                        + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
-                        + "]"
-            )
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                it[finishPeriodActualDateStoreKey] = finishDate.time
+
+                Log.d(
+                    "SpendsRepository",
+                    "Finish budget ["
+                            + "budget: ${it[budgetStoreKey]} "
+                            + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
+                            + "actual finish date: ${Date(it[finishPeriodActualDateStoreKey]!!)}"
+                            + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
+                            + "]"
+                )
+            }
+
+            multiBudgetRepository.persistCurrentStateUnderLock(activeId)
         }
-
-        // Immediately flush the updated finishPeriodActualDate into the active
-        // profile row. Without this, the profile DB record still has
-        // finishPeriodActualDate = null and the early-finish state is lost if
-        // the app is killed before the user switches profiles (which is the only
-        // other point that calls persistCurrentStateToActiveProfile).
-        multiBudgetRepository.persistCurrentStateToActiveProfile()
     }
 
     suspend fun updateDailyBudget(newDailyBudget: BigDecimal) {
-        context.budgetDataStore.edit {
-            it[dailyBudgetStoreKey] = newDailyBudget.toString()
-            it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                it[dailyBudgetStoreKey] = newDailyBudget.toString()
+                it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
 
-            Log.d(
-                "SpendsRepository",
-                "Update daily budget ["
-                        + "daily budget: ${it[dailyBudgetStoreKey]} "
-                        + "spent: ${it[spentStoreKey]}"
-                        + "]"
-            )
+                Log.d(
+                    "SpendsRepository",
+                    "Update daily budget ["
+                            + "daily budget: ${it[dailyBudgetStoreKey]} "
+                            + "spent: ${it[spentStoreKey]}"
+                            + "]"
+                )
+            }
         }
 
-
-        val setDailyBudgetTransaction = transactionDao.getAll(TransactionType.SET_DAILY_BUDGET).asFlow().first().last()
+        val profileId = activeProfileId()
+        val setDailyBudgetTransaction = transactionDao
+            .getAll(TransactionType.SET_DAILY_BUDGET, profileId)
+            .asFlow().first().last()
         transactionDao.update(setDailyBudgetTransaction.copy(value = newDailyBudget))
     }
 
     suspend fun setDailyBudget(newDailyBudget: BigDecimal) {
-        context.budgetDataStore.edit {
-            val spent: BigDecimal = it[spentStoreKey]?.toBigDecimal()!!
-            val spentFromDailyBudget: BigDecimal =
-                it[spentFromDailyBudgetStoreKey]?.toBigDecimal()!!
+        val profileId = activeProfileId()
 
-            it[dailyBudgetStoreKey] = newDailyBudget.toString()
-            it[spentStoreKey] = (spent + spentFromDailyBudget).toString()
-            it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
-            it[spentFromDailyBudgetStoreKey] = BigDecimal.ZERO.toString()
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                val spent: BigDecimal = it[spentStoreKey]?.toBigDecimal()!!
+                val spentFromDailyBudget: BigDecimal =
+                    it[spentFromDailyBudgetStoreKey]?.toBigDecimal()!!
 
-            Log.d(
-                "SpendsRepository",
-                "Set daily budget ["
-                        + "daily budget: ${it[dailyBudgetStoreKey]} "
-                        + "spent: ${it[spentStoreKey]}"
-                        + "]"
-            )
+                it[dailyBudgetStoreKey] = newDailyBudget.toString()
+                it[spentStoreKey] = (spent + spentFromDailyBudget).toString()
+                it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
+                it[spentFromDailyBudgetStoreKey] = BigDecimal.ZERO.toString()
+
+                Log.d(
+                    "SpendsRepository",
+                    "Set daily budget ["
+                            + "daily budget: ${it[dailyBudgetStoreKey]} "
+                            + "spent: ${it[spentStoreKey]}"
+                            + "]"
+                )
+            }
         }
 
         transactionDao.insert(
             Transaction(
-                TransactionType.SET_DAILY_BUDGET,
-                newDailyBudget,
-                getCurrentDateUseCase(),
+                type = TransactionType.SET_DAILY_BUDGET,
+                value = newDailyBudget,
+                date = getCurrentDateUseCase(),
+                budgetProfileId = profileId,
             )
         )
     }
@@ -347,7 +387,6 @@ class SpendsRepository @Inject constructor(
         val spentFromDailyBudget = getSpentFromDailyBudget().first()
         val finishPeriodDate =
             getFinishPeriodDate().first() ?: throw Exception("Finish period date is null")
-
 
         val restDays =
             countDays(finishPeriodDate, getCurrentDateUseCase()) - if (excludeCurrentDay) 1 else 0
@@ -407,7 +446,6 @@ class SpendsRepository @Inject constructor(
             getFinishPeriodDate().first() ?: throw Exception("Finish period date is null")
         val lastChangeDailyBudgetDate =
             getLastChangeDailyBudgetDate().first() ?: getStartPeriodDate().first()
-
 
         val restDays = countDays(finishPeriodDate, getCurrentDateUseCase()).coerceAtLeast(0)
         val skippedDays = countDays(
@@ -470,7 +508,6 @@ class SpendsRepository @Inject constructor(
         val lastChangeDailyBudgetDate =
             getLastChangeDailyBudgetDate().first() ?: getStartPeriodDate().first()
 
-
         val restDays = countDays(finishPeriodDate, getCurrentDateUseCase()).coerceAtLeast(0)
         val skippedDays = countDays(
             Date(min(getCurrentDateUseCase().time, finishPeriodDate.time)),
@@ -517,49 +554,58 @@ class SpendsRepository @Inject constructor(
     }
 
     suspend fun addSpent(newTransaction: Transaction) {
-        this.transactionDao.insert(newTransaction)
+        val profileId = activeProfileId()
+        val stamped = if (newTransaction.budgetProfileId == 0 && profileId != 0) {
+            newTransaction.copy(budgetProfileId = profileId)
+        } else {
+            newTransaction
+        }
+        this.transactionDao.insert(stamped)
 
-        context.budgetDataStore.edit {
-            try {
-                if (isSameDay(newTransaction.date, getCurrentDateUseCase())) {
-                    val spentFromDailyBudget = it[spentFromDailyBudgetStoreKey]?.toBigDecimal()!!
-                    it[spentFromDailyBudgetStoreKey] =
-                        (spentFromDailyBudget + newTransaction.value).toString()
-                } else {
-                    val finishPeriodDate =
-                        it[finishPeriodDateStoreKey]?.let { value -> Date(value) }!!
-                    val dailyBudget = it[dailyBudgetStoreKey]?.toBigDecimal()!!
-                    val spent = it[spentStoreKey]?.toBigDecimal()!!
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                try {
+                    if (isSameDay(stamped.date, getCurrentDateUseCase())) {
+                        val spentFromDailyBudget =
+                            it[spentFromDailyBudgetStoreKey]?.toBigDecimal()!!
+                        it[spentFromDailyBudgetStoreKey] =
+                            (spentFromDailyBudget + stamped.value).toString()
+                    } else {
+                        val activeStart = it[startPeriodDateStoreKey]
+                        val activeFinish = it[finishPeriodDateStoreKey]
+                        val txTime = stamped.date.time
 
-                    val spreadDeltaSpentPerRestDays = newTransaction.value
-                        .divide(
-                            countDays(finishPeriodDate, getCurrentDateUseCase()).toBigDecimal(),
-                            2,
-                            RoundingMode.HALF_EVEN,
-                        )
+                        val belongsToActiveProfile =
+                            activeStart != null &&
+                                    activeFinish != null &&
+                                    txTime >= activeStart &&
+                                    txTime <= activeFinish
 
-                    Log.d(
-                        "SpendsRepository",
-                        "Add spent for previous day ["
-                                + "spent: $spent "
-                                + "dailyBudget: $dailyBudget "
-                                + "spreadDeltaSpentPerRestDays: $spreadDeltaSpentPerRestDays "
-                                + "spentDate: ${newTransaction.date} "
-                                + "getCurrentDateUseCase: ${getCurrentDateUseCase()} "
-                                + "countDays: ${
-                            countDays(
-                                finishPeriodDate,
-                                getCurrentDateUseCase()
+                        if (!belongsToActiveProfile) {
+                            applySpentToOwningProfile(stamped)
+                            return@edit
+                        }
+
+                        val finishPeriodDate =
+                            it[finishPeriodDateStoreKey]?.let { v -> Date(v) }!!
+                        val dailyBudget = it[dailyBudgetStoreKey]?.toBigDecimal()!!
+                        val spent = it[spentStoreKey]?.toBigDecimal()!!
+
+                        val spreadDeltaSpentPerRestDays = stamped.value
+                            .divide(
+                                countDays(finishPeriodDate, getCurrentDateUseCase())
+                                    .toBigDecimal(),
+                                2,
+                                RoundingMode.HALF_EVEN,
                             )
-                        } "
-                                + "]"
-                    )
 
-                    it[dailyBudgetStoreKey] = (dailyBudget - spreadDeltaSpentPerRestDays).toString()
-                    it[spentStoreKey] = (spent + newTransaction.value).toString()
+                        it[dailyBudgetStoreKey] =
+                            (dailyBudget - spreadDeltaSpentPerRestDays).toString()
+                        it[spentStoreKey] = (spent + stamped.value).toString()
+                    }
+                } catch (e: Exception) {
+                    context.errorForReport = e.stackTraceToString()
                 }
-            } catch (e: Exception) {
-                context.errorForReport = e.stackTraceToString()
             }
         }
     }
@@ -567,42 +613,97 @@ class SpendsRepository @Inject constructor(
     suspend fun removeSpent(transactionForRemove: Transaction) {
         this.transactionDao.deleteById(transactionForRemove.uid)
 
-        context.budgetDataStore.edit {
-            if (isSameDay(transactionForRemove.date, getCurrentDateUseCase())) {
-                val spentFromDailyBudget = it[spentFromDailyBudgetStoreKey]?.toBigDecimal()!!
+        budgetMutex.mutex.withLock {
+            context.budgetDataStore.edit {
+                if (isSameDay(transactionForRemove.date, getCurrentDateUseCase())) {
+                    val spentFromDailyBudget =
+                        it[spentFromDailyBudgetStoreKey]?.toBigDecimal()!!
+                    it[spentFromDailyBudgetStoreKey] =
+                        (spentFromDailyBudget - transactionForRemove.value).toString()
+                } else {
+                    val activeStart = it[startPeriodDateStoreKey]
+                    val activeFinish = it[finishPeriodDateStoreKey]
+                    val txTime = transactionForRemove.date.time
 
-                it[spentFromDailyBudgetStoreKey] =
-                    (spentFromDailyBudget - transactionForRemove.value).toString()
-            } else {
-                val finishPeriodDate = it[finishPeriodDateStoreKey]?.let { value -> Date(value) }!!
-                val dailyBudget = it[dailyBudgetStoreKey]?.toBigDecimal()!!
-                val spent = it[spentStoreKey]?.toBigDecimal()!!
+                    val belongsToActiveProfile =
+                        activeStart != null &&
+                                activeFinish != null &&
+                                txTime >= activeStart &&
+                                txTime <= activeFinish
 
-                val restDays = countDays(finishPeriodDate, getCurrentDateUseCase())
-                val spreadDeltaSpentPerRestDays = transactionForRemove.value
-                    .divide(
-                        restDays.toBigDecimal(),
-                        2,
-                        RoundingMode.HALF_EVEN,
-                    )
+                    if (!belongsToActiveProfile) {
+                        reverseSpentOnOwningProfile(transactionForRemove)
+                        return@edit
+                    }
 
-                Log.d(
-                    "SpendsRepository",
-                    "Remove spent from previous day { "
-                            + transactionForRemove
-                            + " } ["
-                            + "spent: $spent "
-                            + "dailyBudget: $dailyBudget "
-                            + "spreadDeltaSpentPerRestDays: $spreadDeltaSpentPerRestDays "
-                            + "spentDate: ${transactionForRemove.date} "
-                            + "getCurrentDateUseCase: ${getCurrentDateUseCase()} "
-                            + "countDays: $restDays "
-                            + "]"
-                )
+                    val finishPeriodDate =
+                        it[finishPeriodDateStoreKey]?.let { v -> Date(v) }!!
+                    val dailyBudget = it[dailyBudgetStoreKey]?.toBigDecimal()!!
+                    val spent = it[spentStoreKey]?.toBigDecimal()!!
+                    val restDays = countDays(finishPeriodDate, getCurrentDateUseCase())
+                    val spreadDelta = transactionForRemove.value
+                        .divide(restDays.toBigDecimal(), 2, RoundingMode.HALF_EVEN)
 
-                it[dailyBudgetStoreKey] = (dailyBudget + spreadDeltaSpentPerRestDays).toString()
-                it[spentStoreKey] = (spent - transactionForRemove.value).toString()
+                    it[dailyBudgetStoreKey] = (dailyBudget + spreadDelta).toString()
+                    it[spentStoreKey] = (spent - transactionForRemove.value).toString()
+                }
             }
         }
+    }
+
+    private suspend fun reverseSpentOnOwningProfile(transaction: Transaction) {
+        val owningProfile = budgetProfileDao.getByDate(transaction.date.time) ?: return
+        val profileSpent = owningProfile.spent.toBigDecimalOrNull() ?: BigDecimal.ZERO
+        val newSpent = (profileSpent - transaction.value).coerceAtLeast(BigDecimal.ZERO)
+        budgetProfileDao.update(owningProfile.copy(spent = newSpent.toString()))
+    }
+
+    // ── Migration helper ─────────────────────────────────────────────────────
+
+    suspend fun reassignLegacyTransactions() {
+        val unowned = transactionDao.getUnowned()
+        if (unowned.isEmpty()) return
+
+        val profileId = activeProfileId()
+        if (profileId == 0) {
+            Log.w("SpendsRepository", "reassignLegacyTransactions: no active profile yet, skipping")
+            return
+        }
+
+        Log.d(
+            "SpendsRepository",
+            "reassignLegacyTransactions: reassigning ${unowned.size} legacy rows to profile $profileId"
+        )
+
+        unowned.forEach { tx ->
+            transactionDao.update(tx.copy(budgetProfileId = profileId))
+        }
+    }
+
+    private suspend fun applySpentToOwningProfile(transaction: Transaction) {
+        val owningProfile = budgetProfileDao.getByDate(transaction.date.time)
+
+        if (owningProfile == null) {
+            Log.w(
+                "SpendsRepository",
+                "addSpent: no profile owns date ${transaction.date} — " +
+                        "transaction recorded but no budget adjusted"
+            )
+            return
+        }
+
+        val profileSpent = owningProfile.spent.toBigDecimalOrNull() ?: BigDecimal.ZERO
+        budgetProfileDao.update(
+            owningProfile.copy(
+                spent = (profileSpent + transaction.value).toString()
+            )
+        )
+
+        Log.d(
+            "SpendsRepository",
+            "addSpent: back-dated tx ${transaction.date} charged to " +
+                    "profile ${owningProfile.uid} \"${owningProfile.name}\" " +
+                    "(spent ${owningProfile.spent} → ${profileSpent + transaction.value})"
+        )
     }
 }

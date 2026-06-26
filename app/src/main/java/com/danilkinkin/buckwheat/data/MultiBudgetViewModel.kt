@@ -28,7 +28,7 @@ class MultiBudgetViewModel @Inject constructor(
         // would silently discard the existing budget because
         // persistCurrentStateToActiveProfile() returns early when activeId is null.
         viewModelScope.launch {
-            multiBudgetRepository.ensureDefaultProfile()
+            multiBudgetRepository.ensureProfileExists()
         }
     }
 

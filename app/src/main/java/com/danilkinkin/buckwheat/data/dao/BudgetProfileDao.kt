@@ -31,4 +31,12 @@ interface BudgetProfileDao {
 
     @Query("SELECT COUNT(*) FROM budget_profiles")
     suspend fun count(): Int
+
+    @Query("""
+    SELECT * FROM budget_profiles
+    WHERE start_period_date <= :date
+      AND finish_period_date >= :date
+    LIMIT 1
+""")
+    suspend fun getByDate(date: Long): BudgetProfile?
 }

@@ -7,11 +7,30 @@ import com.danilkinkin.buckwheat.data.entities.TransactionType
 
 @Dao
 interface TransactionDao {
-    @Query("SELECT * FROM transactions ORDER BY date ASC")
-    fun getAll(): LiveData<List<Transaction>>
 
-    @Query("SELECT * FROM transactions WHERE type = :type ORDER BY date ASC")
-    fun getAll(type: TransactionType): LiveData<List<Transaction>>
+    // ── Profile-scoped queries (preferred) ───────────────────────────────────
+
+    @Query("SELECT * FROM transactions WHERE budget_profile_id = :profileId ORDER BY date ASC")
+    fun getAll(profileId: Int): LiveData<List<Transaction>>
+
+    @Query("SELECT * FROM transactions WHERE budget_profile_id = :profileId AND type = :type ORDER BY date ASC")
+    fun getAll(type: TransactionType, profileId: Int): LiveData<List<Transaction>>
+
+    @Query("DELETE FROM transactions WHERE budget_profile_id = :profileId")
+    fun deleteByProfile(profileId: Int)
+
+    // ── Unscoped fallbacks (used only during migration reassignment) ──────────
+
+    /**
+     * Returns every transaction regardless of profile. Only used by
+     * [com.danilkinkin.buckwheat.di.SpendsRepository.reassignLegacyTransactions]
+     * to bulk-update pre-migration rows (budget_profile_id = 0) after the first
+     * launch on schema v7.
+     */
+    @Query("SELECT * FROM transactions WHERE budget_profile_id = 0")
+    suspend fun getUnowned(): List<Transaction>
+
+    // ── Single-row operations (profile-neutral) ───────────────────────────────
 
     @Query("SELECT * FROM transactions WHERE uid = :uid")
     fun getById(uid: Int): Transaction?
@@ -25,6 +44,7 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE uid = :uid")
     fun deleteById(uid: Int)
 
+    /** Hard delete of every row. Only call from tests or when wiping the whole DB. */
     @Query("DELETE FROM transactions")
     fun deleteAll()
 }
