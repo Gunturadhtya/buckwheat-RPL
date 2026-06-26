@@ -149,4 +149,11 @@
   <string name="rename_budget" translatable="false">Rename budget</string>
   <string name="delete_budget_title" translatable="false">Delete budget</string>
     <string name="delete_budget_confirmation" translatable="false">Delete \"%1$s\"? All spending data for this budget will be lost.</string>
+  <string name="add_money_to_budget">Add money to budget</string>
+  <string name="add_money_title">Add Money to Budget</string>
+  <string name="add_money_description">This amount will be added to your current budget.</string>
+  <string name="add_money_input_hint">Amount</string>
+  <string name="add_money_button">Add</string>
+  <string name="add_money_error_invalid">Nominal harus lebih dari Rp0</string>
+  <string name="add_money_success">Dana berhasil ditambahkan ke budget.</string>
 </resources>

@@ -11,6 +11,7 @@ import androidx.lifecycle.asFlow
 import androidx.lifecycle.map
 import com.danilkinkin.buckwheat.budgetDataStore
 import com.danilkinkin.buckwheat.data.RestedBudgetDistributionMethod
+import com.danilkinkin.buckwheat.data.BudgetTransactionLabel
 import com.danilkinkin.buckwheat.data.entities.Transaction
 import com.danilkinkin.buckwheat.util.DAY
 import com.danilkinkin.buckwheat.data.ExtendCurrency
@@ -165,27 +166,100 @@ class SpendsRepository @Inject constructor(
     }
 
     suspend fun changeBudget(newBudget: BigDecimal, newFinishDate: Date) {
-        context.budgetDataStore.edit {
-            it[budgetStoreKey] = newBudget.toString()
-            it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
-            it[finishPeriodDateStoreKey] = Date(roundToDay(newFinishDate).time + DAY - 1000).time
-            it.remove(finishPeriodActualDateStoreKey)
+        try {
+            // 1. Ambil currentBudget dari DataStore
+            val currentBudget = getBudget().first()
 
-            Log.d(
-                "SpendsRepository",
-                "Change budget ["
-                        + "budget: ${it[budgetStoreKey]} "
-                        + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
-                        + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
-                        + "]"
-            )
+            // 2. Update finishPeriodDateStoreKey (dan budgetStoreKey)
+            context.budgetDataStore.edit {
+                it[budgetStoreKey] = newBudget.toString()
+                it[lastChangeDailyBudgetDateStoreKey] = roundToDay(getCurrentDateUseCase()).time
+                it[finishPeriodDateStoreKey] = Date(roundToDay(newFinishDate).time + DAY - 1000).time
+                it.remove(finishPeriodActualDateStoreKey)
+
+                Log.d(
+                    "SpendsRepository",
+                    "Change budget ["
+                            + "budget: ${it[budgetStoreKey]} "
+                            + "start date: ${Date(it[startPeriodDateStoreKey]!!)} "
+                            + "finish date: ${Date(it[finishPeriodDateStoreKey]!!)}"
+                            + "]"
+                )
+            }
+
+            // 3. Hitung adjustment = newBudget - currentBudget
+            val adjustment = newBudget - currentBudget
+
+            // 4/5. Insert adjustment transaction jika adjustment != 0
+            if (adjustment > BigDecimal.ZERO) {
+                // Adjustment positif -> INCOME
+                transactionDao.insert(
+                    Transaction(
+                        TransactionType.INCOME,
+                        adjustment,
+                        getCurrentDateUseCase(),
+                        comment = BudgetTransactionLabel.ADJUSTMENT,
+                    )
+                )
+            } else if (adjustment < BigDecimal.ZERO) {
+                // Adjustment negatif -> SPENT (tidak memanggil addSpent agar spentStoreKey aman)
+                transactionDao.insert(
+                    Transaction(
+                        TransactionType.SPENT,
+                        adjustment.abs(),
+                        getCurrentDateUseCase(),
+                        comment = BudgetTransactionLabel.ADJUSTMENT,
+                    )
+                )
+            }
+            // Jika adjustment == 0, tidak membuat transaksi adjustment
+
+            // 7. Hitung ulang daily budget
+            updateDailyBudget(whatBudgetForDay())
+        } catch (e: Exception) {
+            Log.e("SpendsRepository", "changeBudget failed", e)
+            context.errorForReport = e.stackTraceToString()
         }
+    }
 
-        val incomeTransaction = transactionDao.getAll(TransactionType.INCOME).asFlow().first().first()
+    suspend fun addMoneyToBudget(amount: BigDecimal) {
+        try {
+            // 1. Validasi amount > 0
+            require(amount > BigDecimal.ZERO) { "Top up amount must be greater than zero" }
 
-        transactionDao.update(incomeTransaction.copy(value = newBudget))
+            // 2. Ambil currentBudget dari DataStore
+            val currentBudget = getBudget().first()
 
-        updateDailyBudget(whatBudgetForDay())
+            // 3. Insert histori transaksi INCOME dengan comment TOP_UP
+            transactionDao.insert(
+                Transaction(
+                    TransactionType.INCOME,
+                    amount,
+                    getCurrentDateUseCase(),
+                    comment = BudgetTransactionLabel.TOP_UP,
+                )
+            )
+
+            // 4. Update budgetStoreKey = currentBudget + amount
+            context.budgetDataStore.edit {
+                it[budgetStoreKey] = (currentBudget + amount).toString()
+
+                Log.d(
+                    "SpendsRepository",
+                    "Add money to budget ["
+                            + "amount: $amount "
+                            + "new budget: ${it[budgetStoreKey]} "
+                            + "]"
+                )
+            }
+
+            // 5. Hitung ulang daily budget
+            updateDailyBudget(whatBudgetForDay())
+        } catch (e: Exception) {
+            Log.e("SpendsRepository", "addMoneyToBudget failed", e)
+            context.errorForReport = e.stackTraceToString()
+            throw e
+        }
     }
 
     suspend fun finishBudget(finishDate: Date) {

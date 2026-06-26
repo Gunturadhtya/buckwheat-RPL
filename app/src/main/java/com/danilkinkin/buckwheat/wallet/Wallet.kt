@@ -30,6 +30,7 @@ import com.danilkinkin.buckwheat.data.MultiBudgetViewModel
 import com.danilkinkin.buckwheat.data.PathState
 import com.danilkinkin.buckwheat.data.RestedBudgetDistributionMethod
 import com.danilkinkin.buckwheat.data.SpendsViewModel
+import com.danilkinkin.buckwheat.data.TopUpUiState
 import com.danilkinkin.buckwheat.di.TUTORS
 import com.danilkinkin.buckwheat.analytics.ANALYTICS_SHEET
 import com.danilkinkin.buckwheat.ui.BuckwheatTheme
@@ -73,6 +74,24 @@ fun Wallet(
     var showNewBudgetNameDialog by remember { mutableStateOf(false) }
     var newBudgetNameText by remember { mutableStateOf("") }
 
+    // Top-up state
+    var showTopUpDialog by remember { mutableStateOf(false) }
+    val topUpState by spendsViewModel.topUpState.observeAsState(TopUpUiState())
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show snackbar on success or error from top-up
+    LaunchedEffect(topUpState) {
+        topUpState.successMessage?.let {
+            showTopUpDialog = false
+            snackbarHostState.showSnackbar(it)
+            spendsViewModel.clearTopUpState()
+        }
+        topUpState.errorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            spendsViewModel.clearTopUpState()
+        }
+    }
+
     // Pre-read at composition time so it can be used inside onClick lambdas.
     val budgetDefaultNameTemplate = stringResource(R.string.budget_default_name)
 
@@ -99,6 +118,7 @@ fun Wallet(
     val offset = with(LocalDensity.current) { 50.dp.toPx().toInt() }
 
     Surface(Modifier.padding(top = localBottomSheetScrollState.topPadding)) {
+        Box {
         Column {
             val days = if (dateToValue.value !== null) {
                 countDaysToToday(dateToValue.value!!)
@@ -277,6 +297,12 @@ fun Wallet(
                     ),
                 ) {
                     Column {
+                        // ── Add Money to Budget button ──
+                        ButtonRow(
+                            icon = painterResource(R.drawable.ic_add),
+                            text = stringResource(R.string.add_money_to_budget),
+                            onClick = { showTopUpDialog = true },
+                        )
                         if (spends!!.isNotEmpty()) {
                             ButtonRow(
                                 icon = painterResource(R.drawable.ic_analytics),
@@ -337,7 +363,7 @@ fun Wallet(
                             onClick = {
                                 spendsViewModel.changeDisplayCurrency(currency!!)
 
-                                if (spends!!.isNotEmpty() && !forceChange) {
+                                if (spendsViewModel.finishPeriodDate.value != null && !forceChange) {
                                     spendsViewModel.changeBudget(budgetCache, dateToValue.value!!)
                                 } else {
                                     spendsViewModel.setBudget(budgetCache, dateToValue.value!!)
@@ -370,6 +396,12 @@ fun Wallet(
                     }
                 }
             }
+        }
+            // Snackbar host for feedback
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 
@@ -421,6 +453,17 @@ fun Wallet(
                     Text(stringResource(R.string.cancel))
                 }
             },
+        )
+    }
+
+    // ── Top-up budget dialog ──────────────────────────────────────────────────
+    if (showTopUpDialog) {
+        TopUpBudgetDialog(
+            isLoading = topUpState.isLoading,
+            onConfirm = { amount ->
+                spendsViewModel.addMoneyToBudget(amount)
+            },
+            onDismiss = { showTopUpDialog = false },
         )
     }
 }
