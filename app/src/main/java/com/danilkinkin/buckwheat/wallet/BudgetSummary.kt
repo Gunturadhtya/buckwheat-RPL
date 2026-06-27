@@ -20,12 +20,15 @@ fun BudgetSummary(
 ) {
     val currency by spendsViewModel.currency.observeAsState(ExtendCurrency.none())
 
+    val wholeBudget by spendsViewModel.budget.observeAsState(BigDecimal.ZERO)
+    val startDateState by spendsViewModel.startPeriodDate.observeAsState()
+    val finishDateState by spendsViewModel.finishPeriodDate.observeAsState()
+
     // Guard against a brand-new / empty profile where these values may be null.
     // When any required value is missing we fall back to edit mode via onEdit()
     // so the user is prompted to set up the budget rather than seeing a crash.
-    val wholeBudget = spendsViewModel.budget.value ?: BigDecimal.ZERO
-    val startDate = spendsViewModel.startPeriodDate.value ?: run { onEdit(); return }
-    val finishDate = spendsViewModel.finishPeriodDate.value ?: run { onEdit(); return }
+    val startDate = startDateState ?: run { onEdit(); return }
+    val finishDate = finishDateState ?: run { onEdit(); return }
 
     Column(Modifier.padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp)) {
         RestAndSpentBudgetCard(

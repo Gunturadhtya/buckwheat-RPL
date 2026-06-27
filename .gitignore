@@ -10,3 +10,7 @@
 .cxx
 local.properties
 .java-version
+
+# AI Assistant Files
+CHANGELOG_AI.md
+.agents/

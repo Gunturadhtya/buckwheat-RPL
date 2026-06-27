@@ -470,6 +470,7 @@ fun Wallet(
     if (showTopUpDialog) {
         TopUpBudgetDialog(
             isLoading = topUpState.isLoading,
+            currency = currency,
             onConfirm = { amount ->
                 spendsViewModel.addMoneyToBudget(amount)
             },
