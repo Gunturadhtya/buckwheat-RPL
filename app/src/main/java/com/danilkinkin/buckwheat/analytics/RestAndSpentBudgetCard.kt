@@ -48,10 +48,24 @@ fun RestAndSpentBudgetCard(
     val currency by spendsViewModel.currency.observeAsState(ExtendCurrency.none())
     val showSpentCard by appViewModel.showSpentCardByDefault.observeAsState(false)
 
-    val wholeBudget = spendsViewModel.budget.value!!
-    val restBudget by spendsViewModel.howMuchBudgetRest().observeAsState(BigDecimal.ZERO)
+    // 1. Observe all dependent variables reactively from DataStore/Room streams
+    val wholeBudget by spendsViewModel.budget.observeAsState(BigDecimal.ZERO)
+    val spent by spendsViewModel.spent.observeAsState(BigDecimal.ZERO)
+    val spentFromDailyBudget by spendsViewModel.spentFromDailyBudget.observeAsState(BigDecimal.ZERO)
 
-    val percent = remember (restBudget) { restBudget.divide(wholeBudget, 4, RoundingMode.HALF_EVEN) }
+    // 2. Reactively compute the remaining budget
+    val restBudget = remember(wholeBudget, spent, spentFromDailyBudget) {
+        wholeBudget - spent - spentFromDailyBudget
+    }
+
+    // 3. Safely calculate the percentage to avoid ArithmeticException
+    val percent = remember(restBudget, wholeBudget) {
+        if (wholeBudget.compareTo(BigDecimal.ZERO) != 0) {
+            restBudget.divide(wholeBudget, 4, RoundingMode.HALF_EVEN)
+        } else {
+            BigDecimal.ZERO
+        }
+    }
 
     val overString = stringResource(R.string.over)
 
@@ -118,7 +132,6 @@ fun RestAndSpentBudgetCard(
         animationSpec = tween(durationMillis = 300),
         label = "waveColorAnim"
     )
-
 
     Box(
         modifier = modifier

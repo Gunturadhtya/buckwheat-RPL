@@ -336,10 +336,25 @@ class SpendsRepository @Inject constructor(
         }
 
         val profileId = activeProfileId()
-        val setDailyBudgetTransaction = transactionDao
+        val dailyBudgetTransactions = transactionDao
             .getAll(TransactionType.SET_DAILY_BUDGET, profileId)
-            .asFlow().first().last()
-        transactionDao.update(setDailyBudgetTransaction.copy(value = newDailyBudget))
+            .asFlow()
+            .first()
+
+        val latestTransaction = dailyBudgetTransactions.lastOrNull()
+
+        if (latestTransaction != null) {
+            transactionDao.update(latestTransaction.copy(value = newDailyBudget))
+        } else {
+            transactionDao.insert(
+                Transaction(
+                    type = TransactionType.SET_DAILY_BUDGET,
+                    value = newDailyBudget,
+                    date = getCurrentDateUseCase(),
+                    budgetProfileId = profileId,
+                )
+            )
+        }
     }
 
     suspend fun setDailyBudget(newDailyBudget: BigDecimal) {

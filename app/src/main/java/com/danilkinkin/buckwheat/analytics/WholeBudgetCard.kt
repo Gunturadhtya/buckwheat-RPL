@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -25,14 +26,46 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.danilkinkin.buckwheat.R
 import com.danilkinkin.buckwheat.data.ExtendCurrency
+import com.danilkinkin.buckwheat.data.SpendsViewModel
 import com.danilkinkin.buckwheat.ui.BuckwheatTheme
 import com.danilkinkin.buckwheat.util.*
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.*
 
+// --- STATEFUL WRAPPER ---
+@Composable
+fun WholeBudgetCard(
+    modifier: Modifier = Modifier,
+    spendsViewModel: SpendsViewModel = hiltViewModel(),
+    colors: CardColors = CardDefaults.cardColors(),
+    bigVariant: Boolean = true,
+    contentPadding: PaddingValues = PaddingValues(vertical = 16.dp, horizontal = 24.dp),
+) {
+    val budget by spendsViewModel.budget.observeAsState(BigDecimal.ZERO)
+    val currency by spendsViewModel.currency.observeAsState(ExtendCurrency.none())
+    val startDate by spendsViewModel.startPeriodDate.observeAsState(Date())
+    val finishDate by spendsViewModel.finishPeriodDate.observeAsState(null)
+    val actualFinishDate by spendsViewModel.finishPeriodActualDate.observeAsState(null)
+
+    WholeBudgetCard(
+        modifier = modifier,
+        budget = budget,
+        currency = currency,
+        startDate = startDate,
+        finishDate = finishDate,
+        actualFinishDate = actualFinishDate,
+        colors = colors,
+        bigVariant = bigVariant,
+        contentPadding = contentPadding
+    )
+}
+// ------------------------
+
+// --- STATELESS UI (Original) ---
 @Composable
 fun WholeBudgetCard(
     modifier: Modifier = Modifier,
