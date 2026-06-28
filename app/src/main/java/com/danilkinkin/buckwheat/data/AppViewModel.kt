@@ -6,6 +6,9 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.SavedStateHandle
@@ -20,6 +23,7 @@ import com.danilkinkin.buckwheat.di.TUTORS
 import com.danilkinkin.buckwheat.effects.ConfettiController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 data class SystemBarState (
@@ -154,6 +158,35 @@ class AppViewModel @Inject constructor(
 
     fun setAbOverride(feature: AbFeature, variant: String?) {
         abTestRepository.setOverride(feature, variant)
+    }
+
+    fun exportTestData(context: Context) {
+        viewModelScope.launch {
+            val csvData = abTestRepository.getCSVData()
+            val fileName = "buckwheat_ab_test_${System.currentTimeMillis()}.csv"
+            val file = File(context.cacheDir, fileName)
+            file.writeText(csvData)
+
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            context.startActivity(Intent.createChooser(intent, "Export A/B Test Data"))
+        }
+    }
+
+    fun clearTestData() {
+        viewModelScope.launch {
+            abTestRepository.clearAllData()
+        }
     }
 
     fun setIsDebug(debug: Boolean) {

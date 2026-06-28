@@ -41,6 +41,10 @@ object AppModule {
     @Provides
     fun provideBudgetProfileDao(db: DatabaseModule) = db.budgetProfileDao()
 
+    @Singleton
+    @Provides
+    fun provideAbTestEventDao(db: DatabaseModule) = db.abTestEventDao()
+
     /**
      * Provides the single [BudgetMutex] instance shared by [SpendsRepository]
      * and [MultiBudgetRepository].  Both classes receive the same object via

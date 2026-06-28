@@ -4,9 +4,11 @@ import androidx.room.*
 import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.danilkinkin.buckwheat.data.dao.AbTestEventDao
 import com.danilkinkin.buckwheat.data.dao.BudgetProfileDao
 import com.danilkinkin.buckwheat.data.dao.StorageDao
 import com.danilkinkin.buckwheat.data.dao.TransactionDao
+import com.danilkinkin.buckwheat.data.entities.AbTestEvent
 import com.danilkinkin.buckwheat.data.entities.BudgetProfile
 import com.danilkinkin.buckwheat.data.entities.Storage
 import com.danilkinkin.buckwheat.data.entities.Transaction
@@ -81,9 +83,29 @@ val AutoMigration6to7: Migration = object : Migration(6, 7) {
     }
 }
 
+// Add ab_test_events table
+val AutoMigration7to8: Migration = object : Migration(7, 8) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `ab_test_events` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`eventType` TEXT NOT NULL, " +
+                    "`feature` TEXT NOT NULL, " +
+                    "`variant` TEXT NOT NULL, " +
+                    "`respondentId` TEXT NOT NULL, " +
+                    "`timestamp` INTEGER NOT NULL, " +
+                    "`success` INTEGER, " +
+                    "`durationMs` INTEGER, " +
+                    "`errorCount` INTEGER, " +
+                    "`questionId` TEXT, " +
+                    "`score` INTEGER)"
+        )
+    }
+}
+
 @Database(
-    entities = [Transaction::class, Storage::class, BudgetProfile::class],
-    version = 7,
+    entities = [Transaction::class, Storage::class, BudgetProfile::class, AbTestEvent::class],
+    version = 8,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AutoMigration1to2::class),
         AutoMigration(from = 2, to = 3, spec = AutoMigration2to3::class),
@@ -100,11 +122,14 @@ abstract class DatabaseModule : RoomDatabase() {
 
     abstract fun budgetProfileDao(): BudgetProfileDao
 
+    abstract fun abTestEventDao(): AbTestEventDao
+
     companion object {
         val MANUAL_MIGRATIONS = arrayOf<Migration>(
             AutoMigration4to5,
             AutoMigration5to6,
             AutoMigration6to7,
+            AutoMigration7to8,
         )
     }
 }

@@ -2,6 +2,8 @@ package com.danilkinkin.buckwheat.di
 
 import android.os.Bundle
 import android.util.Log
+import com.danilkinkin.buckwheat.data.dao.AbTestEventDao
+import com.danilkinkin.buckwheat.data.entities.AbTestEvent
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.ktx.Firebase
@@ -9,6 +11,8 @@ import com.google.firebase.remoteconfig.ktx.remoteConfig
 import com.google.firebase.remoteconfig.ktx.remoteConfigSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,7 +37,9 @@ enum class AbFeature(val key: String) {
  * 4. During tasks, composables call logTaskStarted / logTaskCompleted / logSatisfaction.
  */
 @Singleton
-class AbTestRepository @Inject constructor() {
+class AbTestRepository @Inject constructor(
+    private val abTestEventDao: AbTestEventDao
+) {
     private val remoteConfig = Firebase.remoteConfig
     private val analytics = Firebase.analytics
 
@@ -125,6 +131,18 @@ class AbTestRepository @Inject constructor() {
     fun logTaskStarted(feature: AbFeature, respondentId: String) {
         val variant = getVariant(feature)
         Log.d("AbTestRepository", "Logging event: ab_task_started [feature=${feature.key}, variant=$variant, respondent=$respondentId]")
+        
+        // Offline persistence
+        val event = AbTestEvent(
+            eventType = "ab_task_started",
+            feature = feature.key,
+            variant = variant,
+            respondentId = respondentId
+        )
+        MainScope().launch {
+            abTestEventDao.insert(event)
+        }
+
         analytics.logEvent("ab_task_started", Bundle().apply {
             putString("feature", feature.key)
             putString("variant", variant)
@@ -148,6 +166,21 @@ class AbTestRepository @Inject constructor() {
     ) {
         val variant = getVariant(feature)
         Log.d("AbTestRepository", "Logging event: ab_task_completed [feature=${feature.key}, variant=$variant, respondent=$respondentId, success=$success, duration=${durationMs}ms]")
+        
+        // Offline persistence
+        val event = AbTestEvent(
+            eventType = "ab_task_completed",
+            feature = feature.key,
+            variant = variant,
+            respondentId = respondentId,
+            success = if (success) 1 else 0,
+            durationMs = durationMs,
+            errorCount = errorCount
+        )
+        MainScope().launch {
+            abTestEventDao.insert(event)
+        }
+
         analytics.logEvent("ab_task_completed", Bundle().apply {
             putString("feature", feature.key)
             putString("variant", variant)
@@ -172,6 +205,20 @@ class AbTestRepository @Inject constructor() {
     ) {
         val variant = getVariant(feature)
         Log.d("AbTestRepository", "Logging event: ab_satisfaction [feature=${feature.key}, variant=$variant, respondent=$respondentId, question=$questionId, score=$score]")
+        
+        // Offline persistence
+        val event = AbTestEvent(
+            eventType = "ab_satisfaction",
+            feature = feature.key,
+            variant = variant,
+            respondentId = respondentId,
+            questionId = questionId,
+            score = score
+        )
+        MainScope().launch {
+            abTestEventDao.insert(event)
+        }
+
         analytics.logEvent("ab_satisfaction", Bundle().apply {
             putString("feature", feature.key)
             putString("variant", variant)
@@ -179,5 +226,19 @@ class AbTestRepository @Inject constructor() {
             putString("question_id", questionId)
             putLong("score", score.toLong())
         })
+    }
+
+    suspend fun getCSVData(): String {
+        val events = abTestEventDao.getAllEvents()
+        val header = "Timestamp,RespondentID,Event,Feature,Variant,Success,DurationMs,ErrorCount,QuestionID,Score\n"
+        val body = events.joinToString("\n") { e ->
+            "${e.timestamp},${e.respondentId},${e.eventType},${e.feature},${e.variant},${e.success ?: ""},${e.durationMs ?: ""},${e.errorCount ?: ""},${e.questionId ?: ""},${e.score ?: ""}"
+        }
+        return header + body
+    }
+
+    suspend fun clearAllData() {
+        abTestEventDao.deleteAll()
+        Log.d("AbTestRepository", "All local test data cleared.")
     }
 }

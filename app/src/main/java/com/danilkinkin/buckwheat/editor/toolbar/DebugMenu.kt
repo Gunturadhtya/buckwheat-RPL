@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -313,6 +314,21 @@ fun DebugMenu(
                     }
                 )
             }
+
+            // ── Data Export ─────────────────────────────────────────────
+            val context = LocalContext.current
+            Header("Study Data Export")
+            ButtonRow(
+                text = "Export results to CSV",
+                iconInset = false,
+                onClick = { appViewModel.exportTestData(context) }
+            )
+            ButtonRow(
+                text = "Clear all testing data",
+                iconInset = false,
+                onClick = { appViewModel.clearTestData() }
+            )
+            Spacer(Modifier.height(32.dp))
         }
     }
 }
