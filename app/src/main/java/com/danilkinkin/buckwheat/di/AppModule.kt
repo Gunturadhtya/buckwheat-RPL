@@ -2,6 +2,7 @@ package com.danilkinkin.buckwheat.di
 
 import android.content.Context
 import androidx.room.Room
+import com.danilkinkin.buckwheat.data.DatabaseCallback
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -15,7 +16,8 @@ object AppModule {
     @Singleton
     @Provides
     fun provideYourDatabase(
-        @ApplicationContext app: Context
+        @ApplicationContext app: Context,
+        callback: DatabaseCallback
     ) = Room.databaseBuilder(
         app.applicationContext,
         DatabaseModule::class.java,
@@ -24,6 +26,7 @@ object AppModule {
         .fallbackToDestructiveMigration()
         .allowMainThreadQueries()
         .addMigrations(*DatabaseModule.MANUAL_MIGRATIONS)
+        .addCallback(callback)
         .build()
 
     @Singleton

@@ -47,4 +47,6 @@ interface TransactionDao {
     /** Hard delete of every row. Only call from tests or when wiping the whole DB. */
     @Query("DELETE FROM transactions")
     fun deleteAll()
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(transactions: List<Transaction>)
 }

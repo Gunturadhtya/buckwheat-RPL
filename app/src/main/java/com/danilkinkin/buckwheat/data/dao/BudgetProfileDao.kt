@@ -39,4 +39,10 @@ interface BudgetProfileDao {
     LIMIT 1
 """)
     suspend fun getByDate(date: Long): BudgetProfile?
+
+    @Query("SELECT COUNT(uid) FROM budget_profiles")
+    suspend fun getProfileCount(): Int
+
+    @Query("SELECT * FROM budget_profiles ORDER BY sort_order ASC")
+    suspend fun getAllProfiles(): List<BudgetProfile>
 }
