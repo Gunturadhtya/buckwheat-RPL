@@ -4,6 +4,7 @@ plugins {
     id("dagger.hilt.android.plugin")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.0"
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -107,6 +108,14 @@ dependencies {
     ksp("com.google.dagger:dagger-compiler:2.57")
     ksp("com.google.dagger:hilt-android-compiler:2.57")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+    //Firebase
+    // implementation PLAN: Buckwheat_AB_Firebase_Agent_Plan.pdf
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-config-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.firebase:firebase-abt")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling:1.8.3")

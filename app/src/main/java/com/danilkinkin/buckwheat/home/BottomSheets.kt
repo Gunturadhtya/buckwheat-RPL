@@ -24,12 +24,15 @@ import com.danilkinkin.buckwheat.analytics.ANALYTICS_SHEET
 import com.danilkinkin.buckwheat.analytics.Analytics
 import com.danilkinkin.buckwheat.analytics.VIEWER_HISTORY_SHEET
 import com.danilkinkin.buckwheat.analytics.ViewerHistory
+import com.danilkinkin.buckwheat.abtest.QUESTIONNAIRE_SHEET
+import com.danilkinkin.buckwheat.abtest.QuestionnaireScreen
 import com.danilkinkin.buckwheat.onboarding.ON_BOARDING_SHEET
 import com.danilkinkin.buckwheat.onboarding.Onboarding
 import com.danilkinkin.buckwheat.recalcBudget.RECALCULATE_DAILY_BUDGET_SHEET
 import com.danilkinkin.buckwheat.recalcBudget.RecalcBudget
 import com.danilkinkin.buckwheat.settings.*
 import com.danilkinkin.buckwheat.wallet.*
+import com.danilkinkin.buckwheat.di.AbFeature
 import kotlinx.coroutines.launch
 import java.util.*
 
@@ -40,7 +43,6 @@ fun BottomSheets(
     appViewModel: AppViewModel = hiltViewModel(),
     spendsViewModel: SpendsViewModel = hiltViewModel(),
 ) {
-    val isDebug = appViewModel.isDebug.observeAsState(false)
     val coroutineScope = rememberCoroutineScope()
 
     val requireSetBudget by spendsViewModel.requireSetBudget.observeAsState(false)
@@ -147,6 +149,18 @@ fun BottomSheets(
         )
     }
 
+    BottomSheetWrapper(name = QUESTIONNAIRE_SHEET) { state ->
+        // The calling site passes the feature as an arg:
+        // appViewModel.openSheet(PathState(QUESTIONNAIRE_SHEET, mapOf("feature" to AbFeature.ADD_MONEY)))
+        val feature = state.args["feature"] as? AbFeature ?: AbFeature.ADD_MONEY
+        QuestionnaireScreen(
+            feature = feature,
+            onSubmit = {
+                coroutineScope.launch { state.hide() }
+            }
+        )
+    }
+
     BottomSheetWrapper(
         name = ON_BOARDING_SHEET,
         cancelable = false,
@@ -182,16 +196,14 @@ fun BottomSheets(
         )
     }
 
-    if (isDebug.value) {
-        BottomSheetWrapper(
-            name = DEBUG_MENU_SHEET,
-        ) { state ->
-            DebugMenu(
-                onClose = {
-                    coroutineScope.launch { state.hide() }
-                },
-            )
-        }
+    BottomSheetWrapper(
+        name = DEBUG_MENU_SHEET,
+    ) { state ->
+        DebugMenu(
+            onClose = {
+                coroutineScope.launch { state.hide() }
+            },
+        )
     }
 
     BottomSheetWrapper(

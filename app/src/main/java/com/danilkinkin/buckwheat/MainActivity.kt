@@ -23,6 +23,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
 import com.danilkinkin.buckwheat.base.balloon.BalloonProvider
 import com.danilkinkin.buckwheat.data.dao.StorageDao
+import com.danilkinkin.buckwheat.di.AbTestRepository
 import com.danilkinkin.buckwheat.di.migrateToDataStore
 import com.danilkinkin.buckwheat.home.MainScreen
 import dagger.hilt.android.AndroidEntryPoint
@@ -56,6 +57,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var storageDao: StorageDao
 
+    @Inject
+    lateinit var abTestRepository: AbTestRepository
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         val context = this.applicationContext
@@ -75,6 +79,7 @@ class MainActivity : ComponentActivity() {
                 syncTheme(localContext)
                 syncOverrideLocale(localContext)
                 migrateToDataStore(context, storageDao)
+                abTestRepository.fetchAndActivate()
 
                 // App ready for work
                 isReady.value = true

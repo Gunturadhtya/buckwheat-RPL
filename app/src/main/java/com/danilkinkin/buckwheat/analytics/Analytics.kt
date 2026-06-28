@@ -65,6 +65,9 @@ fun Analytics(
     val wholeBudget = spendsViewModel.budget.value!!
     val scrollState = rememberScrollState()
 
+    val isAbDateRange by appViewModel.isAbDateRange.observeAsState(false)
+    val isAbMultiCategory by appViewModel.isAbMultiCategory.observeAsState(false)
+
     var currentPreset by remember { mutableStateOf(DateRangePreset.ACTIVE_PERIOD) }
     var customStartDate by remember { mutableStateOf<Date?>(null) }
     var customEndDate by remember { mutableStateOf<Date?>(null) }
@@ -144,17 +147,19 @@ fun Analytics(
                             finishDate = spendsViewModel.finishPeriodDate.value!!,
                             actualFinishDate = finishPeriodActualDate,
                         )
-                        
-                        DateRangeFilter(
-                            currentPreset = currentPreset,
-                            onPresetSelected = { currentPreset = it },
-                            onCustomRangeSelected = { start, end ->
-                                customStartDate = start
-                                customEndDate = end
-                            },
-                            modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth()
-                        )
-                        
+
+                        if (isAbDateRange) {
+                            DateRangeFilter(
+                                currentPreset = currentPreset,
+                                onPresetSelected = { currentPreset = it },
+                                onCustomRangeSelected = { start, end ->
+                                    customStartDate = start
+                                    customEndDate = end
+                                },
+                                modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth()
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(16.dp))
                         if (filteredSpends.isNotEmpty()) {
                             Row(
@@ -215,12 +220,14 @@ fun Analytics(
                                 )
                             }
                             Spacer(modifier = Modifier.height(36.dp))
-                            CategoriesChartCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                spends = filteredSpends,
-                                currency = spendsViewModel.currency.value!!,
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
+                            if (isAbMultiCategory) {
+                                CategoriesChartCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    spends = filteredSpends,
+                                    currency = spendsViewModel.currency.value!!,
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
                         } else {
                             Text(
                                 text = "Belum ada transaksi pada rentang tanggal ini.",

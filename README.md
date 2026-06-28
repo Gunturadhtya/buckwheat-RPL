@@ -27,6 +27,8 @@ If you want to support my work, you can share my app with friends or check anoth
 
 ### Other information
 
+**Implementation Plan**: [Buckwheat_AB_Firebase_Agent_Plan.pdf](./Buckwheat_AB_Firebase_Agent_Plan.pdf)
+
 **Press Kit**: [Google Drive](https://drive.google.com/drive/folders/1DsVynLPhYvKJNIlFAz87GnK53ja3Suap?usp=sharing)
 
 **Policy**: [You can read there](./POLICY.md)

@@ -2,6 +2,7 @@ package com.danilkinkin.buckwheat.editor.toolbar.restBudgetPill
 
 import android.content.res.Configuration.UI_MODE_NIGHT_YES
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
@@ -31,13 +32,14 @@ import com.danilkinkin.buckwheat.data.SpendsViewModel
 import com.danilkinkin.buckwheat.di.TUTORIAL_STAGE
 import com.danilkinkin.buckwheat.di.TUTORS
 import com.danilkinkin.buckwheat.editor.EditorViewModel
+import com.danilkinkin.buckwheat.editor.toolbar.DEBUG_MENU_SHEET
 import com.danilkinkin.buckwheat.ui.*
 import com.danilkinkin.buckwheat.util.*
 import com.danilkinkin.buckwheat.wallet.WALLET_SHEET
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RowScope.RestBudgetPill(
     /** Active budget profile name. Null or blank = single-budget / no label. */
@@ -117,6 +119,10 @@ fun RowScope.RestBudgetPill(
         BigIconButton(
             icon = painterResource(R.drawable.ic_balance_wallet),
             contentDescription = null,
+            modifier = Modifier.combinedClickable(
+                onClick = { appViewModel.openSheet(PathState(WALLET_SHEET)) },
+                onLongClick = { appViewModel.openSheet(PathState(DEBUG_MENU_SHEET)) }
+            ),
             onClick = { appViewModel.openSheet(PathState(WALLET_SHEET)) },
         )
     } else {
@@ -138,16 +144,21 @@ fun RowScope.RestBudgetPill(
             Card(
                 modifier = Modifier
                     .weight(1F)
-                    .height(50.dp),
+                    .height(50.dp)
+                    .combinedClickable(
+                        onClick = {
+                            balloonState.hide()
+                            appViewModel.openSheet(PathState(WALLET_SHEET))
+                        },
+                        onLongClick = {
+                            appViewModel.openSheet(PathState(DEBUG_MENU_SHEET))
+                        }
+                    ),
                 shape = CircleShape,
                 colors = CardDefaults.cardColors(
                     containerColor = harmonizedColor.container,
                     contentColor = harmonizedColor.onContainer,
                 ),
-                onClick = {
-                    balloonState.hide()
-                    appViewModel.openSheet(PathState(WALLET_SHEET))
-                }
             ) {
                 Box(
                     modifier = Modifier.fillMaxHeight(),

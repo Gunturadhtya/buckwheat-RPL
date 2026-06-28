@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.danilkinkin.buckwheat.data.AppViewModel
 import com.danilkinkin.buckwheat.data.SpendsViewModel
 import com.danilkinkin.buckwheat.editor.EditStage
 import com.danilkinkin.buckwheat.editor.EditorViewModel
@@ -38,12 +39,15 @@ import com.danilkinkin.buckwheat.util.observeLiveData
 fun TaggingToolbar(
     spendsViewModel: SpendsViewModel = hiltViewModel(),
     editorViewModel: EditorViewModel = hiltViewModel(),
+    appViewModel: AppViewModel = hiltViewModel(),
     editorFocusController: FocusController
 ) {
     val localDensity = LocalDensity.current
 
     val tags by spendsViewModel.tags.observeAsState(emptyList())
     val currentComment by editorViewModel.currentComment.observeAsState("")
+
+    val isAbMultiCategory by appViewModel.isAbMultiCategory.observeAsState(false)
 
     var showAddComment by remember { mutableStateOf(false) }
     var isEdit by remember { mutableStateOf(false) }
@@ -52,23 +56,55 @@ fun TaggingToolbar(
         showAddComment = it === EditStage.EDIT_SPENT
     }
 
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val width = maxWidth - 48.dp
+    if (isAbMultiCategory) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val width = maxWidth - 48.dp
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(44.dp)
-                .horizontalScroll(
-                    state = rememberScrollState(),
-                    enabled = !isEdit,
-                    reverseScrolling = true,
-                )
-                .padding(horizontal = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End,
-        ) {
-            tags.take(5).reversed().filter { it != currentComment }.forEach { tag ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(44.dp)
+                    .horizontalScroll(
+                        state = rememberScrollState(),
+                        enabled = !isEdit,
+                        reverseScrolling = true,
+                    )
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
+            ) {
+                tags.take(5).reversed().filter { it != currentComment }.forEach { tag ->
+                    AnimatedVisibility(
+                        visible = showAddComment,
+                        enter = fadeIn(
+                            tween(
+                                durationMillis = 150,
+                                easing = EaseInOutQuad,
+                            )
+                        ) + slideInHorizontally(
+                            tween(
+                                durationMillis = 150,
+                                easing = EaseInOutQuad,
+                            )
+                        ) { with(localDensity) { 30.dp.toPx().toInt() } },
+                        exit = fadeOut(
+                            tween(
+                                durationMillis = 150,
+                                easing = EaseInOutQuad,
+                            )
+                        ) + slideOutHorizontally(
+                            tween(
+                                durationMillis = 150,
+                                easing = EaseInOutQuad,
+                            )
+                        ) { with(localDensity) { 30.dp.toPx().toInt() } },
+                    ) {
+                        Tag(value = tag, onClick = {
+                            editorViewModel.currentComment.value = tag
+                        })
+                    }
+                }
+                Spacer(modifier = Modifier.width(24.dp))
                 AnimatedVisibility(
                     visible = showAddComment,
                     enter = fadeIn(
@@ -94,43 +130,13 @@ fun TaggingToolbar(
                         )
                     ) { with(localDensity) { 30.dp.toPx().toInt() } },
                 ) {
-                    Tag(value = tag, onClick = {
-                        editorViewModel.currentComment.value = tag
-                    })
+                    CustomTag(
+                        onlyIcon = tags.isNotEmpty(),
+                        editorFocusController = editorFocusController,
+                        extendWidth = width,
+                        onEdit = { isEdit = it },
+                    )
                 }
-            }
-            Spacer(modifier = Modifier.width(24.dp))
-            AnimatedVisibility(
-                visible = showAddComment,
-                enter = fadeIn(
-                    tween(
-                        durationMillis = 150,
-                        easing = EaseInOutQuad,
-                    )
-                ) + slideInHorizontally(
-                    tween(
-                        durationMillis = 150,
-                        easing = EaseInOutQuad,
-                    )
-                ) { with(localDensity) { 30.dp.toPx().toInt() } },
-                exit = fadeOut(
-                    tween(
-                        durationMillis = 150,
-                        easing = EaseInOutQuad,
-                    )
-                ) + slideOutHorizontally(
-                    tween(
-                        durationMillis = 150,
-                        easing = EaseInOutQuad,
-                    )
-                ) { with(localDensity) { 30.dp.toPx().toInt() } },
-            ) {
-                CustomTag(
-                    onlyIcon = tags.isNotEmpty(),
-                    editorFocusController = editorFocusController,
-                    extendWidth = width,
-                    onEdit = { isEdit = it },
-                )
             }
         }
     }

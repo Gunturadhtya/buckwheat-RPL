@@ -53,6 +53,9 @@ fun Wallet(
     val haptic = LocalHapticFeedback.current
     val localBottomSheetScrollState = LocalBottomSheetScrollState.current
 
+    val isAbAddMoney by appViewModel.isAbAddMoney.observeAsState(false)
+    val isAbMultiCategory by appViewModel.isAbMultiCategory.observeAsState(false)
+
     var budgetCache by remember { mutableStateOf(spendsViewModel.budget.value!!) }
     val budget by spendsViewModel.budget.observeAsState(BigDecimal.ZERO)
     val spent by spendsViewModel.spent.observeAsState(BigDecimal.ZERO)
@@ -175,19 +178,21 @@ fun Wallet(
                     exit = fadeOut(tween(150)),
                 ) {
                     Row {
-                        IconButton(
-                            onClick = {
-                                newBudgetNameText = budgetDefaultNameTemplate.format(
-                                    profiles.size + 1,
+                        if (isAbMultiCategory) {
+                            IconButton(
+                                onClick = {
+                                    newBudgetNameText = budgetDefaultNameTemplate.format(
+                                        profiles.size + 1,
+                                    )
+                                    showNewBudgetNameDialog = true
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_add),
+                                    contentDescription = stringResource(R.string.add_budget),
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                showNewBudgetNameDialog = true
-                            },
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_add),
-                                contentDescription = stringResource(R.string.add_budget),
-                                modifier = Modifier.size(24.dp)
-                            )
+                            }
                         }
                         if (!isEdit) {
                             IconButton(
@@ -308,11 +313,13 @@ fun Wallet(
                 ) {
                     Column {
                         // ── Add Money to Budget button ──
-                        ButtonRow(
-                            icon = painterResource(R.drawable.ic_add),
-                            text = stringResource(R.string.add_money_to_budget),
-                            onClick = { showTopUpDialog = true },
-                        )
+                        if (isAbAddMoney) {
+                            ButtonRow(
+                                icon = painterResource(R.drawable.ic_add),
+                                text = stringResource(R.string.add_money_to_budget),
+                                onClick = { showTopUpDialog = true },
+                            )
+                        }
                         if (spends!!.isNotEmpty()) {
                             ButtonRow(
                                 icon = painterResource(R.drawable.ic_analytics),

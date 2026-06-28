@@ -42,7 +42,6 @@ fun EditorToolbar(
     multiBudgetViewModel: MultiBudgetViewModel = hiltViewModel(),
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val isDebug = appViewModel.isDebug.observeAsState(false)
     val mode by editorViewModel.mode.observeAsState(EditMode.ADD)
 
     val profiles by multiBudgetViewModel.profiles.observeAsState(emptyList())
@@ -75,16 +74,15 @@ fun EditorToolbar(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = if (isDebug.value) 6.dp else 8.dp, end = 6.dp, top = 6.dp)
+            .padding(start = 6.dp, end = 6.dp, top = 6.dp)
             .statusBarsPadding(),
     ) {
-        if (isDebug.value) {
-            BigIconButton(
-                icon = painterResource(R.drawable.ic_developer_mode),
-                contentDescription = null,
-                onClick = { appViewModel.openSheet(PathState(DEBUG_MENU_SHEET)) },
-            )
-        }
+        // Developer mode button always visible for test facilitator
+        BigIconButton(
+            icon = painterResource(R.drawable.ic_developer_mode),
+            contentDescription = null,
+            onClick = { appViewModel.openSheet(PathState(DEBUG_MENU_SHEET)) },
+        )
         Spacer(modifier = Modifier.width(4.dp))
         if (mode == EditMode.EDIT) {
             CancelEditSpent()

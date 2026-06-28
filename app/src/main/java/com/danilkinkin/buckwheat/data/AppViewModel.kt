@@ -6,12 +6,15 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.danilkinkin.buckwheat.base.balloon.BalloonController
+import com.danilkinkin.buckwheat.di.AbFeature
+import com.danilkinkin.buckwheat.di.AbTestRepository
 import com.danilkinkin.buckwheat.di.SettingsRepository
 import com.danilkinkin.buckwheat.di.TUTORS
 import com.danilkinkin.buckwheat.effects.ConfettiController
@@ -36,6 +39,7 @@ data class PathState (
 class AppViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val settingsRepository: SettingsRepository,
+    private val abTestRepository: AbTestRepository,
 ) : ViewModel() {
 
     var _snackbarHostState = SnackbarHostState()
@@ -89,6 +93,67 @@ class AppViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.switchShowSpentCardByDefault(showByDefault)
         }
+    }
+
+    // ── A/B test — variant flags ─────────────────────────────────────────
+    // Each starts as false (Variant A) and recomposes to true if Remote Config
+    // assigns Variant B after fetchAndActivate() completes.
+    val isAbAddMoney: LiveData<Boolean> =
+        abTestRepository.isVariantBFlow(AbFeature.ADD_MONEY).asLiveData()
+    val isAbMultiCategory: LiveData<Boolean> =
+        abTestRepository.isVariantBFlow(AbFeature.MULTI_CATEGORY).asLiveData()
+    val isAbDateRange: LiveData<Boolean> =
+        abTestRepository.isVariantBFlow(AbFeature.DATE_RANGE).asLiveData()
+
+    // ── A/B test — current respondent ID ─────────────────────────────────
+    // Set by the test facilitator via DebugMenu before each respondent session.
+    // Passed to every logEvent call so events can be grouped per respondent.
+    var currentRespondentId: MutableLiveData<String> = MutableLiveData("R00")
+    fun setRespondentId(id: String) {
+        currentRespondentId.value = id
+        abTestRepository.setRespondentId(id)
+    }
+
+    // ── A/B test — task timer ─────────────────────────────────────────────
+    // taskStartMs holds System.currentTimeMillis() when a task begins.
+    // ViewModel scope keeps it alive across recompositions.
+    private var taskStartMs: Long = 0L
+    var activeTask: MutableState<AbFeature?> = mutableStateOf(null)
+    var errorCount: MutableState<Int> = mutableStateOf(0)
+
+    fun startTask(feature: AbFeature) {
+        taskStartMs = System.currentTimeMillis()
+        activeTask.value = feature
+        errorCount.value = 0
+        abTestRepository.logTaskStarted(
+            feature = feature,
+            respondentId = currentRespondentId.value ?: "R00",
+        )
+    }
+
+    fun completeTask(feature: AbFeature, success: Boolean) {
+        val duration = System.currentTimeMillis() - taskStartMs
+        abTestRepository.logTaskCompleted(
+            feature = feature,
+            respondentId = currentRespondentId.value ?: "R00",
+            success = success,
+            durationMs = duration,
+            errorCount = errorCount.value,
+        )
+        activeTask.value = null
+    }
+
+    fun logSatisfaction(feature: AbFeature, questionId: String, score: Int) {
+        abTestRepository.logSatisfaction(
+            feature = feature,
+            respondentId = currentRespondentId.value ?: "R00",
+            questionId = questionId,
+            score = score,
+        )
+    }
+
+    fun setAbOverride(feature: AbFeature, variant: String?) {
+        abTestRepository.setOverride(feature, variant)
     }
 
     fun setIsDebug(debug: Boolean) {
